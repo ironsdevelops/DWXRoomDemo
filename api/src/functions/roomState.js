@@ -39,7 +39,7 @@ app.http('roomState', {
       const filter = encodeURIComponent(`cra04_room_id eq '${roomId}'`);
 
       const dvRes = await fetch(
-        `${process.env.DATAVERSE_URL}/api/data/v9.2/DemoRooms?$filter=${filter}`,
+        `${process.env.DATAVERSE_URL}/api/data/v9.2/cra04_demoroomses?$filter=${filter}`,
         { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
       );
       const data = await dvRes.json();
