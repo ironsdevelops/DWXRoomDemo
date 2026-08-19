@@ -14,7 +14,7 @@
     "@azure/functions": "^4.16.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "three": "^0.185.1"
+    "three": "^0.128.0"
   },
   "devDependencies": {
     "@azure/static-web-apps-cli": "^2.0.10",
