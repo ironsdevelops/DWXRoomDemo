@@ -179,6 +179,54 @@ export default function Room3DDemo() {
   const [lightBrightness, setLightBrightness] = useState(0);
   const [screenOn, setScreenOn] = useState(false);
   const [temperature, setTemperature] = useState(21);
+  const [liveConnected, setLiveConnected] = useState(false);
+  const lastManualChangeRef = useRef(0);
+  const MANUAL_GRACE_MS = 6000;
+
+  // Poll the live Dataverse-backed room state via the Azure Function proxy.
+  // Skips applying updates for a few seconds after a manual slider interaction,
+  // so a poll landing mid-drag doesn't yank the control back under the user's hand.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function pollRoomState() {
+      try {
+        const res = await fetch(`/api/room-state?room_id=${ROOM_CONFIG.roomId}`);
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+        const rows = await res.json();
+        if (cancelled) return;
+
+        setLiveConnected(true);
+        const inGracePeriod = Date.now() - lastManualChangeRef.current < MANUAL_GRACE_MS;
+        if (inGracePeriod) return;
+
+        rows.forEach((row) => {
+          const device = row.cra04_device;
+          const state = row.cra04_state;
+          if (device === 'Blinds') setBlindPosition(Number(state));
+          else if (device === 'Lights') setLightBrightness(Number(state));
+          else if (device === 'Temperature') setTemperature(Number(state));
+          else if (device === 'Screen') setScreenOn(state === 'On');
+        });
+      } catch (err) {
+        console.error('Room state poll failed:', err);
+        if (!cancelled) setLiveConnected(false);
+      }
+    }
+
+    pollRoomState();
+    const intervalId = setInterval(pollRoomState, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  // Call this from each slider/button's onChange to mark a manual interaction,
+  // so the next poll (within MANUAL_GRACE_MS) doesn't immediately overwrite it.
+  function markManualChange() {
+    lastManualChangeRef.current = Date.now();
+  }
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -557,6 +605,13 @@ export default function Room3DDemo() {
             {ROOM_CONFIG.roomId} · {ROOM_CONFIG.roomType} · Seats {ROOM_CONFIG.capacity} · Floor {ROOM_CONFIG.floor}, {ROOM_CONFIG.wing}
           </span>
         </div>
+        <span style={{
+          fontSize: 12, padding: '4px 10px', borderRadius: 999,
+          background: liveConnected ? '#E6F4EE' : '#F2E9E4',
+          color: liveConnected ? '#0F6E56' : '#A65B32',
+        }}>
+          {liveConnected ? '● Live' : '○ Offline'}
+        </span>
       </div>
       <div
         ref={mountRef}
@@ -564,7 +619,7 @@ export default function Room3DDemo() {
       />
       <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
         <button
-          onClick={() => setScreenOn((v) => !v)}
+          onClick={() => { markManualChange(); setScreenOn((v) => !v); }}
           style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid #d3d1c7', background: '#fff', cursor: 'pointer', fontSize: 14 }}
         >
           {screenOn ? 'End meeting' : 'Start meeting'}
@@ -581,7 +636,7 @@ export default function Room3DDemo() {
           max="100"
           step="5"
           value={blindPosition}
-          onChange={(e) => setBlindPosition(Number(e.target.value))}
+          onChange={(e) => { markManualChange(); setBlindPosition(Number(e.target.value)); }}
           style={{ width: '100%' }}
         />
       </div>
@@ -596,7 +651,7 @@ export default function Room3DDemo() {
           max="100"
           step="5"
           value={lightBrightness}
-          onChange={(e) => setLightBrightness(Number(e.target.value))}
+          onChange={(e) => { markManualChange(); setLightBrightness(Number(e.target.value)); }}
           style={{ width: '100%' }}
         />
       </div>
@@ -611,7 +666,7 @@ export default function Room3DDemo() {
           max="28"
           step="1"
           value={temperature}
-          onChange={(e) => setTemperature(Number(e.target.value))}
+          onChange={(e) => { markManualChange(); setTemperature(Number(e.target.value)); }}
           style={{ width: '100%' }}
         />
       </div>
