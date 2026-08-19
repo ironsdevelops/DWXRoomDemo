@@ -44,7 +44,7 @@ app.http('roomState', {
       );
       const data = await dvRes.json();
 
-      return { jsonBody: data };
+      return { jsonBody: data.value };
     } catch (err) {
       context.error(err);
       return { status: 500, jsonBody: { error: 'Failed to fetch room state' } };
