@@ -98,7 +98,7 @@ function makeLightPanelTexture(brightness) {
   }, 64, 1, 1);
 }
 
-function makeTouchPanelTexture(active) {
+function makeTouchPanelTexture(active, roomName) {
   return makeCanvasTexture((ctx, s) => {
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, 0, s, s);
@@ -113,7 +113,7 @@ function makeTouchPanelTexture(active) {
     ctx.fillText(active ? 'In meeting' : 'Join meeting', s / 2, s * 0.5);
     ctx.fillStyle = '#5F5E5A';
     ctx.font = '12px sans-serif';
-    ctx.fillText('Room 1', s / 2, s * 0.18);
+    ctx.fillText(roomName, s / 2, s * 0.18);
   }, 256, 1, 1);
 }
 
@@ -156,6 +156,20 @@ function buildChair(scene, x, z, rotationY, fabricTex) {
   group.rotation.y = rotationY;
   scene.add(group);
 }
+
+// Room configuration — pulled from the Asset Inventory list (MTR-09 / The Newton Room).
+// Structured as a single config object so a future version can accept this as a prop
+// or fetch it per room_id, rather than being hardcoded per file.
+const ROOM_CONFIG = {
+  roomId: 'MTR-09',
+  displayName: 'The Newton Room',
+  roomType: 'Meeting Room',
+  capacity: 8,
+  floor: 3,
+  wing: 'North',
+  mtrDevice: 'Logitech Rally Bar',
+  touchController: 'Logitech Tap',
+};
 
 export default function Room3DDemo() {
   const mountRef = useRef(null);
@@ -230,7 +244,7 @@ export default function Room3DDemo() {
       blindsMeshes.push(blind);
     });
 
-    // Centralized wall-mounted screen
+    // Wall-mounted screen — Samsung 75" QM75B, centered (Newton Room: single MTR display)
     const screenBezel = new THREE.Mesh(
       new THREE.BoxGeometry(2.2, 1.3, 0.05),
       new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.4 })
@@ -245,6 +259,7 @@ export default function Room3DDemo() {
     screenFace.position.set(0, 1.75, -roomD / 2 + 0.06);
     scene.add(screenFace);
 
+    // Logitech Rally Bar — single built-in intelligent-director camera
     const videoBar = new THREE.Mesh(
       new THREE.BoxGeometry(0.6, 0.09, 0.09),
       new THREE.MeshStandardMaterial({ color: 0x2C2C2A, roughness: 0.5 })
@@ -323,7 +338,7 @@ export default function Room3DDemo() {
     scene.add(wedgeBody);
 
     const slopeAngle = Math.atan2(yTopBack - yTopFront, zFront - zBack);
-    const touchPanelMat = new THREE.MeshStandardMaterial({ map: makeTouchPanelTexture(false), roughness: 0.3 });
+    const touchPanelMat = new THREE.MeshStandardMaterial({ map: makeTouchPanelTexture(false, ROOM_CONFIG.displayName), roughness: 0.3 });
     const touchPanel = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2 - 0.01, 0.2), touchPanelMat);
     touchPanel.rotation.x = -(Math.PI / 2 - slopeAngle);
     touchPanel.position.set(0, 0.79 + (yTopFront + yTopBack) / 2 + 0.003, tableCenterZ + 0.35);
@@ -523,7 +538,7 @@ export default function Room3DDemo() {
     screenFace.material.emissive.set(screenOn ? 0x1a3a5c : 0x000000);
     screenFace.material.emissiveIntensity = screenOn ? 0.6 : 0;
     videoBarLed.material.emissive.set(screenOn ? 0x1D9E75 : 0x000000);
-    touchPanel.material.map = makeTouchPanelTexture(screenOn);
+    touchPanel.material.map = makeTouchPanelTexture(screenOn, ROOM_CONFIG.displayName);
     touchPanel.material.needsUpdate = true;
   }, [screenOn]);
 
@@ -535,6 +550,14 @@ export default function Room3DDemo() {
 
   return (
     <div style={{ fontFamily: 'sans-serif', maxWidth: 720, margin: '0 auto' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, color: '#2C2C2A' }}>{ROOM_CONFIG.displayName}</h2>
+          <span style={{ fontSize: 13, color: '#888780' }}>
+            {ROOM_CONFIG.roomId} · {ROOM_CONFIG.roomType} · Seats {ROOM_CONFIG.capacity} · Floor {ROOM_CONFIG.floor}, {ROOM_CONFIG.wing}
+          </span>
+        </div>
+      </div>
       <div
         ref={mountRef}
         style={{ width: '100%', borderRadius: 12, overflow: 'hidden', border: '1px solid #e0ddd3' }}
