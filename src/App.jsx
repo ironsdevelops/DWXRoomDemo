@@ -202,11 +202,39 @@ export default function Room3DDemo() {
 
         rows.forEach((row) => {
           const device = row.cra04_device;
-          const state = row.cra04_state;
-          if (device === 'Blinds') setBlindPosition(Number(state));
-          else if (device === 'Lights') setLightBrightness(Number(state));
-          else if (device === 'Temperature') setTemperature(Number(state));
-          else if (device === 'Screen') setScreenOn(state === 'On');
+          const rawState = String(row.cra04_state ?? '').trim();
+          const numeric = Number(rawState);
+          const lower = rawState.toLowerCase();
+
+          if (device === 'Blinds') {
+            // 0 = fully open, 100 = fully closed. Falls back to word-mapping if
+            // Dataverse holds a non-numeric value like "Closed" instead of a percentage.
+            let value = numeric;
+            if (Number.isNaN(value)) {
+              if (lower.includes('close')) value = 100;
+              else if (lower.includes('open')) value = 0;
+              else return; // unrecognized value — skip rather than corrupt the render
+            }
+            setBlindPosition(Math.max(0, Math.min(100, value)));
+          } else if (device === 'Lights') {
+            let value = numeric;
+            if (Number.isNaN(value)) {
+              // Safety net matching the anchor words used in the Copilot Studio
+              // parameter description, in case the model ever passes text instead
+              // of resolving it to a number itself.
+              if (lower === 'off' || lower.includes('dark')) value = 0;
+              else if (lower === 'on' || lower.includes('full') || lower === 'bright') value = 100;
+              else if (lower.includes('dim') || lower.includes('less bright')) value = 30;
+              else if (lower.includes('slightly bright')) value = 60;
+              else if (lower.includes('bright')) value = 80;
+              else return; // genuinely unrecognized — skip rather than corrupt the render
+            }
+            setLightBrightness(Math.max(0, Math.min(100, value)));
+          } else if (device === 'Temperature') {
+            if (!Number.isNaN(numeric)) setTemperature(Math.max(16, Math.min(28, numeric)));
+          } else if (device === 'Screen') {
+            setScreenOn(lower === 'on');
+          }
         });
       } catch (err) {
         console.error('Room state poll failed:', err);
