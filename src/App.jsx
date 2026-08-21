@@ -132,6 +132,23 @@ function makeReadoutTexture(tempValue) {
   }, 128, 1, 1);
 }
 
+function makeAirQualityTexture(ppmValue) {
+  return makeCanvasTexture((ctx, s) => {
+    ctx.clearRect(0, 0, s, s);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath();
+    ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#F2F0E9';
+    ctx.font = 'bold 40px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${Math.round(ppmValue)}`, s / 2, s / 2 - 8);
+    ctx.font = '16px sans-serif';
+    ctx.fillText('ppm CO2', s / 2, s / 2 + 26);
+  }, 128, 1, 1);
+}
+
 function buildChair(scene, x, z, rotationY, fabricTex) {
   const group = new THREE.Group();
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x2C2C2A, roughness: 0.6 });
@@ -179,6 +196,7 @@ export default function Room3DDemo() {
   const [lightBrightness, setLightBrightness] = useState(0);
   const [screenOn, setScreenOn] = useState(false);
   const [temperature, setTemperature] = useState(21);
+  const [airQuality, setAirQuality] = useState(600);
   const [liveConnected, setLiveConnected] = useState(false);
   const lastManualChangeRef = useRef(0);
   const MANUAL_GRACE_MS = 6000;
@@ -232,6 +250,16 @@ export default function Room3DDemo() {
             setLightBrightness(Math.max(0, Math.min(100, value)));
           } else if (device === 'Temperature') {
             if (!Number.isNaN(numeric)) setTemperature(Math.max(16, Math.min(28, numeric)));
+          } else if (device === 'Air Quality') {
+            if (!Number.isNaN(numeric)) {
+              setAirQuality(Math.max(400, Math.min(2400, numeric)));
+            } else if (lower.includes('poor') || lower.includes('stale') || lower.includes('stuffy')) {
+              setAirQuality(1800);
+            } else if (lower.includes('moderate')) {
+              setAirQuality(1200);
+            } else if (lower.includes('good') || lower.includes('fresh') || lower.includes('excellent')) {
+              setAirQuality(550);
+            }
           } else if (device === 'Screen') {
             setScreenOn(lower === 'on');
           }
@@ -511,16 +539,42 @@ export default function Room3DDemo() {
     thermoGlow.position.set(-2.5, 1.5, -roomD / 2 + 0.2);
     scene.add(thermoGlow);
 
+    // Air quality panel, stacked directly below the thermostat on the same wall
+    const airQualityRing = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.14, 0.02, 32),
+      new THREE.MeshStandardMaterial({ color: 0x3FA86B, emissive: 0x1F6E42, emissiveIntensity: 0.4, roughness: 0.3 })
+    );
+    airQualityRing.rotation.x = Math.PI / 2;
+    airQualityRing.position.set(-2.5, 1.1, -roomD / 2 + 0.03);
+    scene.add(airQualityRing);
+
+    const airQualityDisplay = new THREE.Mesh(
+      new THREE.CircleGeometry(0.1, 32),
+      new THREE.MeshStandardMaterial({ map: makeAirQualityTexture(600), roughness: 0.4 })
+    );
+    airQualityDisplay.position.set(-2.5, 1.1, -roomD / 2 + 0.05);
+    scene.add(airQualityDisplay);
+
+    const airQualityGlow = new THREE.PointLight(0x3FA86B, 0.6, 1.5, 2);
+    airQualityGlow.position.set(-2.5, 1.1, -roomD / 2 + 0.2);
+    scene.add(airQualityGlow);
+
     sceneObjectsRef.current = {
       blindsMeshes, glassMat, ambient, daylight, ceilingLights, screenFace, videoBarLed, touchPanel,
       thermoRing, thermoDisplay, thermoGlow,
+      airQualityRing, airQualityDisplay, airQualityGlow,
       currentTemp: 21, targetTemp: 21, lastDisplayedTemp: 21,
+      currentAirQuality: 600, targetAirQuality: 600, lastDisplayedAirQuality: 600,
       currentBlindPosition: 0, targetBlindPosition: 0,
       renderer, scene, camera,
     };
 
     const coldColor = new THREE.Color(0x378ADD);
     const warmColor = new THREE.Color(0xD85A30);
+
+    const goodAirColor = new THREE.Color(0x3FA86B);
+    const midAirColor = new THREE.Color(0xE0A930);
+    const poorAirColor = new THREE.Color(0xC0392B);
 
     const baseAmbient = 0.5, minAmbient = 0.35;
     const baseDaylight = 0.55, minDaylight = 0.08;
@@ -546,6 +600,22 @@ export default function Room3DDemo() {
         objs.lastDisplayedTemp = objs.currentTemp;
         objs.thermoDisplay.material.map = makeReadoutTexture(objs.currentTemp);
         objs.thermoDisplay.material.needsUpdate = true;
+      }
+
+      // Air quality: green (400ppm) -> amber (1200ppm) -> red (2000ppm+)
+      objs.currentAirQuality += (objs.targetAirQuality - objs.currentAirQuality) * 0.02;
+      const aq = Math.max(400, Math.min(2400, objs.currentAirQuality));
+      const aqMixed = aq <= 1200
+        ? goodAirColor.clone().lerp(midAirColor, (aq - 400) / (1200 - 400))
+        : midAirColor.clone().lerp(poorAirColor, Math.min(1, (aq - 1200) / (2000 - 1200)));
+      objs.airQualityRing.material.color.copy(aqMixed);
+      objs.airQualityRing.material.emissive.copy(aqMixed);
+      objs.airQualityGlow.color.copy(aqMixed);
+
+      if (Math.round(objs.currentAirQuality / 10) !== Math.round(objs.lastDisplayedAirQuality / 10)) {
+        objs.lastDisplayedAirQuality = objs.currentAirQuality;
+        objs.airQualityDisplay.material.map = makeAirQualityTexture(objs.currentAirQuality);
+        objs.airQualityDisplay.material.needsUpdate = true;
       }
 
       objs.ceilingLights.forEach((light) => {
@@ -624,6 +694,12 @@ export default function Room3DDemo() {
     }
   }, [temperature]);
 
+  useEffect(() => {
+    if (sceneObjectsRef.current) {
+      sceneObjectsRef.current.targetAirQuality = airQuality;
+    }
+  }, [airQuality]);
+
   return (
     <div style={{ fontFamily: 'sans-serif', maxWidth: 720, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -698,9 +774,26 @@ export default function Room3DDemo() {
           style={{ width: '100%' }}
         />
       </div>
+      <div style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#5F5E5A', marginBottom: 6 }}>
+          <span>Air quality (CO2, ppm)</span>
+          <span>{airQuality} ppm</span>
+        </div>
+        <input
+          type="range"
+          min="400"
+          max="2400"
+          step="50"
+          value={airQuality}
+          onChange={(e) => { markManualChange(); setAirQuality(Number(e.target.value)); }}
+          style={{ width: '100%' }}
+        />
+      </div>
       <p style={{ fontSize: 12, color: '#888780', marginTop: 10 }}>
         The thermostat on the back wall eases toward the target temperature and its glow
-        shifts from cold blue to warm amber. Closing the blinds also dims the room's ambient
+        shifts from cold blue to warm amber. The air quality panel on the side wall works
+        the same way, easing toward the target CO2 reading and shifting from green through
+        amber to red as it climbs. Closing the blinds also dims the room's ambient
         and directional lighting — the same easing pattern throughout, so everything settles
         smoothly rather than snapping between states.
       </p>
