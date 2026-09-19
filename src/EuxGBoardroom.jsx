@@ -70,11 +70,11 @@ function makeWoodTexture() {
 
 function makeFloorTexture() {
   return makeCanvasTexture((ctx, s) => {
-    ctx.fillStyle = '#B9C1CB';
+    ctx.fillStyle = '#9AA3AE';
     ctx.fillRect(0, 0, s, s);
     const plankW = s / 6;
     for (let i = 0; i < 6; i++) {
-      const shade = 196 + Math.round(Math.random() * 20 - 10);
+      const shade = 172 + Math.round(Math.random() * 20 - 10);
       ctx.fillStyle = `rgb(${shade - 12}, ${shade - 4}, ${shade})`;
       ctx.fillRect(i * plankW, 0, plankW - 2, s);
     }
@@ -201,12 +201,13 @@ const CALL_CONFIG = {
     { name: 'Tom Becker' },
     { name: 'Sofia Rossi' },
   ],
+  presenter: 'Amelia Hart',
   // Order the active speaker moves through (indexes into participants), repeating.
   speakerOrder: [1, 2, 1, 3, 0, 4, 5, 2],
 };
 
 const SCREEN_W = 1280;
-const SCREEN_H = 704; // same aspect as the 2.0 x 1.1 screen plane
+const SCREEN_H = 720; // 16:9, one canvas per display
 
 const TEAMS = {
   bg: '#1F1F1F', tile: '#292929', button: '#3D3D3D',
@@ -241,28 +242,6 @@ function drawRoomGlyph(ctx, cx, cy) {
   ctx.beginPath();
   ctx.arc(cx, cy + 28, 24, Math.PI, 0);
   ctx.fill();
-}
-
-function drawControlGlyph(ctx, kind, cx, cy) {
-  ctx.strokeStyle = '#FFFFFF';
-  ctx.fillStyle = '#FFFFFF';
-  ctx.lineWidth = 2.5;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  if (kind === 'mic') {
-    ctx.beginPath(); ctx.roundRect(cx - 6, cy - 15, 12, 20, 6); ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx, cy + 1, 11, 0.1 * Math.PI, 0.9 * Math.PI); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx, cy + 12); ctx.lineTo(cx, cy + 17); ctx.stroke();
-  } else if (kind === 'camera') {
-    ctx.beginPath(); ctx.roundRect(cx - 16, cy - 9, 20, 18, 4); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx + 8, cy - 3); ctx.lineTo(cx + 16, cy - 8); ctx.lineTo(cx + 16, cy + 8); ctx.lineTo(cx + 8, cy + 3); ctx.closePath(); ctx.stroke();
-  } else if (kind === 'share') {
-    ctx.beginPath(); ctx.roundRect(cx - 15, cy - 11, 30, 22, 4); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx, cy + 6); ctx.lineTo(cx, cy - 5); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx - 5, cy); ctx.lineTo(cx, cy - 5); ctx.lineTo(cx + 5, cy); ctx.stroke();
-  } else if (kind === 'more') {
-    [-9, 0, 9].forEach((dx) => { ctx.beginPath(); ctx.arc(cx + dx, cy, 2.6, 0, Math.PI * 2); ctx.fill(); });
-  }
 }
 
 function drawJoiningScreen(ctx, t) {
@@ -327,7 +306,7 @@ function drawCallScreen(ctx, t) {
   ctx.fillText(`${participants.length} people`, W - 28, 36);
 
   // Participant grid, 3 x 2
-  const cols = 3, rows = 2, padX = 24, top = 76, bottom = 96, gap = 16;
+  const cols = 3, rows = 2, padX = 24, top = 76, bottom = 24, gap = 16;
   const tileW = (W - padX * 2 - gap * (cols - 1)) / cols;
   const tileH = (H - top - bottom - gap * (rows - 1)) / rows;
   const speaker = speakerOrder[Math.floor(t / speakerSeconds) % speakerOrder.length];
@@ -370,26 +349,72 @@ function drawCallScreen(ctx, t) {
     }
   });
 
-  // Bottom call controls
-  const by = H - 48;
-  const items = ['mic', 'camera', 'share', 'more'];
-  const btn = 56, btnGap = 16, leaveW = 132;
-  const totalW = items.length * btn + items.length * btnGap + leaveW;
-  let bx = (W - totalW) / 2;
-  items.forEach((kind) => {
-    ctx.fillStyle = TEAMS.button;
-    ctx.beginPath(); ctx.arc(bx + btn / 2, by, btn / 2, 0, Math.PI * 2); ctx.fill();
-    drawControlGlyph(ctx, kind, bx + btn / 2, by);
-    bx += btn + btnGap;
-  });
-  ctx.fillStyle = TEAMS.red;
-  ctx.beginPath(); ctx.roundRect(bx, by - 26, leaveW, 52, 26); ctx.fill();
-  ctx.fillStyle = '#FFFFFF';
-  ctx.textAlign = 'center';
-  ctx.font = `600 22px ${TEAMS_FONT}`;
-  ctx.fillText('Leave', bx + leaveW / 2, by + 1);
-
   // Short fade in as the call replaces the joining screen
+  if (t < 0.5) {
+    ctx.fillStyle = `rgba(31,31,31,${1 - t / 0.5})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+function drawSideBackdrop(ctx) {
+  const W = SCREEN_W, H = SCREEN_H;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = TEAMS.bg;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = TEAMS.muted;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `400 26px ${TEAMS_FONT}`;
+  ctx.fillText(ROOM_CONFIG.displayName, W / 2, H / 2);
+}
+
+// Second display: the shared content, a simple slide.
+function drawSharedScreen(ctx, t) {
+  const W = SCREEN_W, H = SCREEN_H;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = TEAMS.bg;
+  ctx.fillRect(0, 0, W, H);
+  ctx.textBaseline = 'middle';
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.textAlign = 'left';
+  ctx.font = `500 24px ${TEAMS_FONT}`;
+  ctx.fillText(`${CALL_CONFIG.presenter} is presenting`, 32, 36);
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath(); ctx.roundRect(32, 72, W - 64, H - 104, 10); ctx.fill();
+
+  ctx.fillStyle = BRAND.navy;
+  ctx.font = `700 54px ${TEAMS_FONT}`;
+  ctx.fillText('Workplace review', 88, 150);
+  ctx.fillStyle = BRAND.muted;
+  ctx.font = `400 26px ${TEAMS_FONT}`;
+  ctx.fillText('Room utilisation this week', 88, 206);
+
+  const values = [0.55, 0.8, 0.7, 0.9, 0.45];
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  const grow = 1 - Math.pow(1 - Math.min(1, t / 1.0), 3);
+  const base = 580, maxH = 280, barW = 120, gap = 56;
+  values.forEach((v, i) => {
+    const x = 88 + i * (barW + gap);
+    const h = maxH * v * grow;
+    ctx.fillStyle = v === Math.max(...values) ? BRAND.cyan : BRAND.blue;
+    ctx.beginPath(); ctx.roundRect(x, base - h, barW, h, 8); ctx.fill();
+    ctx.fillStyle = BRAND.muted;
+    ctx.textAlign = 'center';
+    ctx.font = `400 22px ${TEAMS_FONT}`;
+    ctx.fillText(days[i], x + barW / 2, base + 30);
+  });
+
+  const avg = Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = BRAND.navy;
+  ctx.font = `700 96px ${TEAMS_FONT}`;
+  ctx.fillText(`${avg}%`, 980, 320);
+  ctx.fillStyle = BRAND.muted;
+  ctx.font = `400 24px ${TEAMS_FONT}`;
+  ctx.fillText('average utilisation', 984, 385);
+
   if (t < 0.5) {
     ctx.fillStyle = `rgba(31,31,31,${1 - t / 0.5})`;
     ctx.fillRect(0, 0, W, H);
@@ -802,36 +827,40 @@ export default function EuxGBoardroomDemo() {
       blindsMeshes.push(blind);
     });
 
-    // Wall-mounted screen, centered
-    const screenBezel = new THREE.Mesh(
-      new THREE.BoxGeometry(2.2, 1.3, 0.05),
-      new THREE.MeshStandardMaterial({ color: 0x0E1622, roughness: 0.4 })
-    );
-    screenBezel.position.set(0, 1.75, -roomD / 2 + 0.03);
-    scene.add(screenBezel);
+    // Two wall-mounted displays with the video bar centred beneath the gap between them.
+    const screenW = 1.6, screenH = 0.9, screenGap = 0.16, screenY = 1.75;
+    const bezelMat = new THREE.MeshStandardMaterial({ color: 0x0E1622, roughness: 0.4 });
+    const screens = [-1, 1].map((side) => {
+      const x = side * (screenW / 2 + screenGap / 2);
+      const bezel = new THREE.Mesh(new THREE.BoxGeometry(screenW + 0.12, screenH + 0.12, 0.05), bezelMat);
+      bezel.position.set(x, screenY, -roomD / 2 + 0.03);
+      scene.add(bezel);
 
-    // Unlit so the call shows at its true colours whatever the room lighting is doing.
-    const screenFace = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.0, 1.1),
-      new THREE.MeshBasicMaterial({ color: 0x0a0a0a })
-    );
-    screenFace.position.set(0, 1.75, -roomD / 2 + 0.06);
-    scene.add(screenFace);
+      // Unlit so the picture shows at its true colours whatever the room lighting is doing.
+      const face = new THREE.Mesh(
+        new THREE.PlaneGeometry(screenW, screenH),
+        new THREE.MeshBasicMaterial({ color: 0x0a0a0a })
+      );
+      face.position.set(x, screenY, -roomD / 2 + 0.06);
+      scene.add(face);
 
-    // The joining screen and mock Teams call are drawn onto this canvas.
-    const screenCanvas = document.createElement('canvas');
-    screenCanvas.width = SCREEN_W;
-    screenCanvas.height = SCREEN_H;
-    const screenCtx = screenCanvas.getContext('2d');
-    const screenTexture = new THREE.CanvasTexture(screenCanvas);
-    screenTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      // What each display shows is drawn onto its own canvas.
+      const canvas = document.createElement('canvas');
+      canvas.width = SCREEN_W;
+      canvas.height = SCREEN_H;
+      const ctx = canvas.getContext('2d');
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      return { face, ctx, texture };
+    });
 
-    // Video bar with a single camera lens
+    // Video bar, sitting under the gap between the two displays
+    const barW = 0.9, barY = 1.12;
     const videoBar = new THREE.Mesh(
-      new THREE.BoxGeometry(0.6, 0.09, 0.09),
+      new THREE.BoxGeometry(barW, 0.1, 0.09),
       new THREE.MeshStandardMaterial({ color: 0x1D2A3A, roughness: 0.5 })
     );
-    videoBar.position.set(0, 1.05, -roomD / 2 + 0.08);
+    videoBar.position.set(0, barY, -roomD / 2 + 0.08);
     scene.add(videoBar);
 
     const videoBarLens = new THREE.Mesh(
@@ -839,14 +868,14 @@ export default function EuxGBoardroomDemo() {
       new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.4 })
     );
     videoBarLens.rotation.x = Math.PI / 2;
-    videoBarLens.position.set(0, 1.05, -roomD / 2 + 0.13);
+    videoBarLens.position.set(0, barY, -roomD / 2 + 0.13);
     scene.add(videoBarLens);
 
     const videoBarLed = new THREE.Mesh(
       new THREE.SphereGeometry(0.012, 8, 8),
       new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0x000000 })
     );
-    videoBarLed.position.set(0.28, 1.05, -roomD / 2 + 0.13);
+    videoBarLed.position.set(barW / 2 - 0.07, barY, -roomD / 2 + 0.13);
     scene.add(videoBarLed);
 
     // D-shaped table: square straight edge near the screen, semicircular curve on the
@@ -1023,8 +1052,8 @@ export default function EuxGBoardroomDemo() {
     scene.add(airQualityGlow);
 
     sceneObjectsRef.current = {
-      blindsMeshes, glassMat, ambient, daylight, ceilingLights, screenFace, videoBarLed, touchPanel,
-      screenTexture, screenCtx, screenOn: false, screenPhase: 'off', screenPhaseStart: 0, lastScreenDraw: 0,
+      blindsMeshes, glassMat, ambient, daylight, ceilingLights, screens, videoBarLed, touchPanel,
+      screenOn: false, screenPhase: 'off', screenPhaseStart: 0, lastScreenDraw: 0,
       thermoRing, thermoDisplay, thermoGlow,
       airQualityRing, airQualityDisplay, airQualityGlow,
       currentTemp: 21, targetTemp: 21, lastDisplayedTemp: 21,
@@ -1093,7 +1122,7 @@ export default function EuxGBoardroomDemo() {
         }
         light.fixture.material.emissiveIntensity = light.currentBrightness * 0.9;
         light.fixture.material.emissive.set(0xFAC775);
-        light.point.intensity = light.currentBrightness * 2.0;
+        light.point.intensity = light.currentBrightness * 0.8;
       });
 
       const avgCeilingBrightness =
@@ -1104,7 +1133,7 @@ export default function EuxGBoardroomDemo() {
         b.scale.y = objs.currentBlindPosition;
       });
       const daylightFactor = 1 - objs.currentBlindPosition;
-      objs.ambient.intensity = minAmbient + (baseAmbient - minAmbient) * daylightFactor + avgCeilingBrightness * 0.32;
+      objs.ambient.intensity = minAmbient + (baseAmbient - minAmbient) * daylightFactor + avgCeilingBrightness * 0.12;
       objs.daylight.intensity = minDaylight + (baseDaylight - minDaylight) * daylightFactor;
 
       // Screen: joining state first, then the call. Redrawn about 10 times a second.
@@ -1118,9 +1147,16 @@ export default function EuxGBoardroomDemo() {
         if (now - objs.lastScreenDraw > 0.1) {
           objs.lastScreenDraw = now;
           const elapsed = now - objs.screenPhaseStart;
-          if (objs.screenPhase === 'joining') drawJoiningScreen(objs.screenCtx, elapsed);
-          else drawCallScreen(objs.screenCtx, elapsed);
-          objs.screenTexture.needsUpdate = true;
+          const [left, right] = objs.screens;
+          if (objs.screenPhase === 'joining') {
+            drawJoiningScreen(left.ctx, elapsed);
+            drawSideBackdrop(right.ctx);
+          } else {
+            drawCallScreen(left.ctx, elapsed);
+            drawSharedScreen(right.ctx, elapsed);
+          }
+          left.texture.needsUpdate = true;
+          right.texture.needsUpdate = true;
         }
       }
 
@@ -1144,7 +1180,7 @@ export default function EuxGBoardroomDemo() {
     return () => {
       cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
-      screenTexture.dispose();
+      screens.forEach((sc) => sc.texture.dispose());
       mount.removeChild(renderer.domElement);
       renderer.dispose();
     };
@@ -1166,16 +1202,18 @@ export default function EuxGBoardroomDemo() {
 
   useEffect(() => {
     const objs = sceneObjectsRef.current;
-    const { screenFace, videoBarLed, touchPanel, screenTexture } = objs;
-    if (!screenFace) return;
+    const { screens, videoBarLed, touchPanel } = objs;
+    if (!screens) return;
     // Turning on starts at "Joining meeting"; turning off goes back to a black screen.
     objs.screenOn = screenOn;
     objs.screenPhase = screenOn ? 'joining' : 'off';
     objs.screenPhaseStart = performance.now() / 1000;
     objs.lastScreenDraw = 0;
-    screenFace.material.map = screenOn ? screenTexture : null;
-    screenFace.material.color.set(screenOn ? 0xffffff : 0x0a0a0a);
-    screenFace.material.needsUpdate = true;
+    screens.forEach(({ face, texture }) => {
+      face.material.map = screenOn ? texture : null;
+      face.material.color.set(screenOn ? 0xffffff : 0x0a0a0a);
+      face.material.needsUpdate = true;
+    });
     videoBarLed.material.emissive.set(screenOn ? 0x00D4E8 : 0x000000);
     setMap(touchPanel.material, makeTouchPanelTexture(screenOn, ROOM_CONFIG.displayName));
   }, [screenOn]);
