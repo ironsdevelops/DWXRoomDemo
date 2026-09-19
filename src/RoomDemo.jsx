@@ -228,70 +228,88 @@ function makeSkylineTexture() {
   layer('#B9CADB', 0.22, 0.46, 34, 80, ['flat', 'slope', 'stepped', 'flat']); // hazy distance
   layer('#93A9C0', 0.16, 0.4, 40, 90, ['flat', 'stepped', 'slope', 'antenna', 'flat']); // mid
 
-  // The Gherkin (30 St Mary Axe): an approximate bullet shape with a faint diagonal lattice.
+  // The Gherkin (30 St Mary Axe): a fat egg shape, widest about a third of the way up, narrowing
+  // more sharply into a domed tip, with a faint diamond lattice.
   const gherkin = (gx, heightFrac, color) => {
-    const gh = H * heightFrac, ga = 33;
+    const gh = H * heightFrac, ga = 44, widest = 0.38;
+    const halfWidth = (u) => {
+      if (u <= widest) {
+        const t = (widest - u) / widest;
+        return ga * (0.84 + 0.16 * Math.sqrt(Math.max(0, 1 - t * t)));
+      }
+      const t = (u - widest) / (1 - widest);
+      return ga * Math.pow(Math.max(0, 1 - Math.pow(t, 2.4)), 0.5);
+    };
+    const steps = 60;
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.moveTo(gx - ga * 0.62, H);
-    ctx.bezierCurveTo(gx - ga * 1.05, H - gh * 0.3, gx - ga * 1.0, H - gh * 0.58, gx - ga * 0.55, H - gh * 0.85);
-    ctx.bezierCurveTo(gx - ga * 0.3, H - gh * 0.96, gx - ga * 0.08, H - gh * 0.99, gx, H - gh);
-    ctx.bezierCurveTo(gx + ga * 0.08, H - gh * 0.99, gx + ga * 0.3, H - gh * 0.96, gx + ga * 0.55, H - gh * 0.85);
-    ctx.bezierCurveTo(gx + ga * 1.0, H - gh * 0.58, gx + ga * 1.05, H - gh * 0.3, gx + ga * 0.62, H);
+    ctx.moveTo(gx - halfWidth(0), H);
+    for (let i = 1; i <= steps; i++) ctx.lineTo(gx - halfWidth(i / steps), H - gh * (i / steps));
+    for (let i = steps; i >= 0; i--) ctx.lineTo(gx + halfWidth(i / steps), H - gh * (i / steps));
     ctx.closePath();
     ctx.fill();
     ctx.save();
     ctx.clip();
     ctx.strokeStyle = 'rgba(255,255,255,0.16)';
     ctx.lineWidth = 1.5;
-    for (let i = 0; i < 160; i += 14) {
+    for (let i = -gh * 0.4; i < ga * 2 + gh * 0.4; i += 13) {
       ctx.beginPath();
-      ctx.moveTo(gx - 80 + i, H);
-      ctx.lineTo(gx - 80 + i + 90, H - gh);
+      ctx.moveTo(gx - ga + i, H);
+      ctx.lineTo(gx - ga + i + gh * 0.4, H - gh);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(gx + 80 - i, H);
-      ctx.lineTo(gx + 80 - i - 90, H - gh);
+      ctx.moveTo(gx + ga - i, H);
+      ctx.lineTo(gx + ga - i - gh * 0.4, H - gh);
       ctx.stroke();
     }
     ctx.restore();
   };
 
-  // The Leadenhall Building (the Cheesegrater): a tall slim core with a wedge whose roofline
-  // slopes away from it, and a faint bracing pattern.
+  // The Leadenhall Building (the Cheesegrater): a very tall, slim wedge. The left edge is upright,
+  // the right edge leans in as it rises, and the roof slants down to the right. A separate,
+  // slightly shorter core stands against the left edge, and big X bracing crosses the frame.
   const leadenhall = (x0, color) => {
-    const coreW = 26, wedgeW = 90;
-    const coreTop = H * 0.26, wedgeHigh = H * 0.3, wedgeLow = H * 0.52;
+    const wedgeTop = H * 0.2, coreTop = H * 0.34;
+    const coreW = 30, baseW = 92, topW = 38, roofDrop = 22;
+    ctx.fillStyle = '#5B7590';
+    ctx.fillRect(x0 - coreW, coreTop, coreW, H - coreTop);
     ctx.fillStyle = color;
-    ctx.fillRect(x0, coreTop, coreW, H - coreTop);
-    ctx.fillRect(x0 + 4, coreTop - 12, coreW - 8, 12); // crown
     ctx.beginPath();
-    ctx.moveTo(x0 + coreW, H);
-    ctx.lineTo(x0 + coreW, wedgeHigh);
-    ctx.lineTo(x0 + coreW + wedgeW, wedgeLow);
-    ctx.lineTo(x0 + coreW + wedgeW, H);
+    ctx.moveTo(x0, H);
+    ctx.lineTo(x0, wedgeTop);
+    ctx.lineTo(x0 + topW, wedgeTop + roofDrop);
+    ctx.lineTo(x0 + baseW, H);
     ctx.closePath();
     ctx.fill();
     ctx.save();
     ctx.clip();
-    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
-    ctx.lineWidth = 1.5;
-    for (let i = 0; i < 240; i += 24) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    ctx.lineWidth = 1;
+    for (let y = H - 10; y > wedgeTop; y -= 11) {
       ctx.beginPath();
-      ctx.moveTo(x0 + coreW, H - i);
-      ctx.lineTo(x0 + coreW + wedgeW, H - i - 90);
+      ctx.moveTo(x0, y);
+      ctx.lineTo(x0 + baseW, y);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    ctx.lineWidth = 2;
+    for (let y = H; y > wedgeTop; y -= 56) {
+      ctx.beginPath();
+      ctx.moveTo(x0, y);
+      ctx.lineTo(x0 + baseW, y - 56);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(x0 + coreW + wedgeW, H - i);
-      ctx.lineTo(x0 + coreW, H - i - 90);
+      ctx.moveTo(x0 + baseW, y);
+      ctx.lineTo(x0, y - 56);
       ctx.stroke();
     }
     ctx.restore();
   };
 
-  // The Gherkin sits a building back, hazier and partly hidden, with the Leadenhall Building in front.
-  gherkin(640, 0.6, '#86A0BA');
-  leadenhall(515, '#6B84A0');
+  // The Gherkin sits a building back on the left, hazier and partly hidden, with the
+  // Leadenhall Building in front of it, as in the photos.
+  gherkin(545, 0.52, '#86A0BA');
+  leadenhall(605, '#6B84A0');
 
   layer('#6E86A0', 0.07, 0.22, 46, 110, ['gable', 'mansard', 'flat', 'gable', 'flat']); // low-rise roofs in front
 
