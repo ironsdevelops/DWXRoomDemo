@@ -265,42 +265,56 @@ function makeSkylineTexture() {
     ctx.restore();
   };
 
-  // The Leadenhall Building (the Cheesegrater): a very tall, slim wedge. The left edge is upright,
-  // the right edge leans in as it rises, and the roof slants down to the right. A separate,
-  // slightly shorter core stands against the left edge, and big X bracing crosses the frame.
+  // The Leadenhall Building (the Cheesegrater): a very tall, slim tower with a flat, squared-off top.
+  // The left edge is upright with a darker braced frame down it, the glazed right edge leans in
+  // as it rises so the top is much narrower than the base, and a separate, slightly shorter core
+  // stands against the left side.
   const leadenhall = (x0, color) => {
     const wedgeTop = H * 0.2, coreTop = H * 0.34;
-    const coreW = 30, baseW = 92, topW = 38, roofDrop = 22;
+    const coreW = 32, baseW = 92, topW = 26, frameW = 12;
+
     ctx.fillStyle = '#5B7590';
     ctx.fillRect(x0 - coreW, coreTop, coreW, H - coreTop);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    for (let y = H - 10; y > coreTop; y -= 11) {
+      ctx.beginPath();
+      ctx.moveTo(x0 - coreW, y);
+      ctx.lineTo(x0, y);
+      ctx.stroke();
+    }
+
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(x0, H);
     ctx.lineTo(x0, wedgeTop);
-    ctx.lineTo(x0 + topW, wedgeTop + roofDrop);
+    ctx.lineTo(x0 + topW, wedgeTop);
     ctx.lineTo(x0 + baseW, H);
     ctx.closePath();
     ctx.fill();
+    ctx.fillStyle = '#4A627D';
+    ctx.fillRect(x0, wedgeTop, frameW, H - wedgeTop);
+
     ctx.save();
     ctx.clip();
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.lineWidth = 1;
     for (let y = H - 10; y > wedgeTop; y -= 11) {
       ctx.beginPath();
-      ctx.moveTo(x0, y);
+      ctx.moveTo(x0 + frameW, y);
       ctx.lineTo(x0 + baseW, y);
       ctx.stroke();
     }
-    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
-    ctx.lineWidth = 2;
-    for (let y = H; y > wedgeTop; y -= 56) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    ctx.lineWidth = 1.5;
+    for (let y = H; y > wedgeTop; y -= 22) {
       ctx.beginPath();
       ctx.moveTo(x0, y);
-      ctx.lineTo(x0 + baseW, y - 56);
+      ctx.lineTo(x0 + frameW, y - 22);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(x0 + baseW, y);
-      ctx.lineTo(x0, y - 56);
+      ctx.moveTo(x0 + frameW, y);
+      ctx.lineTo(x0, y - 22);
       ctx.stroke();
     }
     ctx.restore();
