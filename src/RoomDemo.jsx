@@ -2,17 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
 /* -------------------------------------------------------------------------- */
-/*  Room configuration                                                         */
-/*  roomId must match cra04_room_id on the DemoRooms rows in Dataverse.        */
-/* -------------------------------------------------------------------------- */
-const ROOM_CONFIG = {
-  roomId: 'EUX-G-Boardroom',
-  displayName: 'EUX-G-Boardroom',
-  roomType: 'Boardroom',
-  capacity: 8,
-};
-
-/* -------------------------------------------------------------------------- */
 /*  TANDI brand tokens (same values as the Lisa index.html)                    */
 /* -------------------------------------------------------------------------- */
 const BRAND = {
@@ -23,6 +12,37 @@ const BRAND = {
   offWhite: '#F4F6FB',
   muted: '#6B7A99',
   alert: '#E2574C',
+};
+
+// Per-room look. A room in rooms.js only needs to list what differs from this.
+const DEFAULT_THEME = {
+  wall: '#EAEFF6',
+  wood: '#5A3D2B',
+  chair: '#2A4766',
+  rug: '#6F8DAE',
+  rugBorder: '#A9C0D8',
+  plant: 'rubber',
+};
+
+// Only used if the component is rendered without a room, for example in a preview.
+// It mirrors the Newton Room in rooms.js, so keep the two in step. Real rooms come from main.jsx.
+const FALLBACK_ROOM = {
+  roomId: 'MTR-09',
+  displayName: 'The Newton Room',
+  roomType: 'Meeting Room',
+  capacity: 8,
+  location: 'Floor 3, North',
+  screens: 1,
+  videoBarWidth: 0.8,
+  windowView: 'parkland',
+  theme: {
+    wall: '#EFEDE6',
+    wood: '#8A6A4A',
+    chair: '#1F5F6B',
+    rug: '#B4AE9F',
+    rugBorder: '#D2CDBF',
+    plant: 'snake',
+  },
 };
 
 /* -------------------------------------------------------------------------- */
@@ -50,9 +70,9 @@ function setMap(material, texture) {
   material.needsUpdate = true;
 }
 
-function makeWoodTexture() {
+function makeWoodTexture(base) {
   return makeCanvasTexture((ctx, s) => {
-    ctx.fillStyle = '#5A3D2B';
+    ctx.fillStyle = base;
     ctx.fillRect(0, 0, s, s);
     for (let i = 0; i < 45; i++) {
       const y = (i / 45) * s + (Math.random() - 0.5) * 6;
@@ -88,9 +108,9 @@ function makeFloorTexture() {
   }, 256, 4, 4);
 }
 
-function makeWallTexture() {
+function makeWallTexture(base) {
   return makeCanvasTexture((ctx, s) => {
-    ctx.fillStyle = '#EAEFF6';
+    ctx.fillStyle = base;
     ctx.fillRect(0, 0, s, s);
     for (let i = 0; i < 900; i++) {
       const x = Math.random() * s;
@@ -251,15 +271,95 @@ function makeSkylineTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 
-function makeRugTexture() {
+// Alternative view: rolling parkland with tree canopies and a few low roofs peeking through.
+// Same layout rules as the skyline: each window only shows a slice of the panorama.
+function makeParklandTexture() {
+  const W = 1200, H = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, '#BFDDF5');
+  sky.addColorStop(0.6, '#E6F0F8');
+  sky.addColorStop(1, '#FBF3E4');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  // Seeded so the view is the same on every load.
+  let seed = 23;
+  const rand = () => {
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647;
+  };
+
+  // Distant rolling hills
+  ctx.fillStyle = '#BBCDD8';
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  for (let x = 0; x <= W; x += 10) {
+    ctx.lineTo(x, H * 0.56 + Math.sin(x / 170) * 26 + Math.sin(x / 61 + 1.3) * 10);
+  }
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  ctx.fill();
+
+  // Hazy far treeline
+  ctx.fillStyle = '#93ADAB';
+  for (let x = -10; x < W + 20; x += 16 + rand() * 20) {
+    const r = 16 + rand() * 20;
+    ctx.beginPath();
+    ctx.arc(x, H * 0.66 + rand() * 20, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillRect(0, H * 0.74, W, H * 0.26);
+
+  // A few low buildings with pitched roofs among the trees
+  ctx.fillStyle = '#8FA2B4';
+  for (let i = 0; i < 7; i++) {
+    const w = 46 + rand() * 50;
+    const h = (0.1 + rand() * 0.12) * H;
+    const x = 40 + i * 165 + rand() * 60;
+    ctx.fillRect(x, H - h - 40, w, h);
+    ctx.beginPath();
+    ctx.moveTo(x - 4, H - h - 40);
+    ctx.lineTo(x + w / 2, H - h - 40 - w * 0.3);
+    ctx.lineTo(x + w + 4, H - h - 40);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(x + w * 0.68, H - h - 40 - w * 0.25, 5, 16); // chimney
+  }
+
+  // Nearer canopies, with a few tall narrow poplars for variety
+  ctx.fillStyle = '#688782';
+  for (let x = -20; x < W + 30; x += 30 + rand() * 40) {
+    const r = 26 + rand() * 30;
+    ctx.beginPath();
+    ctx.arc(x, H * 0.86 + rand() * 24, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#56736E';
+  for (let i = 0; i < 9; i++) {
+    const px = 30 + i * 135 + rand() * 70;
+    ctx.beginPath();
+    ctx.ellipse(px, H * 0.8, 13 + rand() * 6, 62 + rand() * 30, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillRect(0, H * 0.94, W, H * 0.06);
+
+  return new THREE.CanvasTexture(canvas);
+}
+
+function makeRugTexture(base, border) {
   return makeCanvasTexture((ctx, s) => {
-    ctx.fillStyle = '#6F8DAE';
+    ctx.fillStyle = base;
     ctx.fillRect(0, 0, s, s);
     for (let i = 0; i < 1200; i++) {
       ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.05)';
       ctx.fillRect(Math.random() * s, Math.random() * s, 2, 2);
     }
-    ctx.strokeStyle = '#A9C0D8';
+    ctx.strokeStyle = border;
     ctx.lineWidth = 4;
     ctx.strokeRect(14, 14, s - 28, s - 28);
   }, 256, 1, 1);
@@ -324,19 +424,17 @@ const CALL_CONFIG = {
   title: 'Project review',
   joiningSeconds: 2.5,
   speakerSeconds: 3.5,
-  // Made-up participants. The room is the first tile, as it would be in a Teams Rooms call.
-  participants: [
-    { name: ROOM_CONFIG.displayName, isRoom: true },
-    { name: 'Amelia Hart' },
-    { name: 'Daniel Osei' },
-    { name: 'Priya Nair' },
-    { name: 'Tom Becker' },
-    { name: 'Sofia Rossi' },
-  ],
+  // Made-up remote participants.
+  people: ['Amelia Hart', 'Daniel Osei', 'Priya Nair', 'Tom Becker', 'Sofia Rossi'],
   presenter: 'Amelia Hart',
-  // Order the active speaker moves through (indexes into participants), repeating.
+  // Order the active speaker moves through (indexes into the participant list, where 0 is the room), repeating.
   speakerOrder: [1, 2, 1, 3, 0, 4, 5, 2],
 };
+
+// The room itself is always the first tile, as it would be in a Teams Rooms call.
+function callParticipants(room) {
+  return [{ name: room.displayName, isRoom: true }, ...CALL_CONFIG.people.map((name) => ({ name }))];
+}
 
 const SCREEN_W = 1280;
 const SCREEN_H = 720; // 16:9, one canvas per display
@@ -376,7 +474,7 @@ function drawRoomGlyph(ctx, cx, cy) {
   ctx.fill();
 }
 
-function drawJoiningScreen(ctx, t) {
+function drawJoiningScreen(ctx, t, room) {
   const W = SCREEN_W, H = SCREEN_H;
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = TEAMS.bg;
@@ -394,7 +492,7 @@ function drawJoiningScreen(ctx, t) {
   ctx.fillText(CALL_CONFIG.title, W / 2, 285);
   ctx.fillStyle = TEAMS.muted;
   ctx.font = `400 26px ${TEAMS_FONT}`;
-  ctx.fillText(ROOM_CONFIG.displayName, W / 2, 335);
+  ctx.fillText(room.displayName, W / 2, 335);
 
   const cy = 430;
   ctx.lineWidth = 6;
@@ -415,9 +513,10 @@ function drawJoiningScreen(ctx, t) {
   ctx.fillText('.'.repeat(Math.floor(t * 2.5) % 4), W / 2 + baseW / 2 + 2, 510);
 }
 
-function drawCallScreen(ctx, t) {
+function drawCallScreen(ctx, t, room) {
   const W = SCREEN_W, H = SCREEN_H;
-  const { participants, speakerOrder, speakerSeconds, title } = CALL_CONFIG;
+  const { speakerOrder, speakerSeconds, title } = CALL_CONFIG;
+  const participants = callParticipants(room);
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = TEAMS.bg;
   ctx.fillRect(0, 0, W, H);
@@ -488,7 +587,7 @@ function drawCallScreen(ctx, t) {
   }
 }
 
-function drawSideBackdrop(ctx) {
+function drawSideBackdrop(ctx, room) {
   const W = SCREEN_W, H = SCREEN_H;
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = TEAMS.bg;
@@ -497,7 +596,7 @@ function drawSideBackdrop(ctx) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = `400 26px ${TEAMS_FONT}`;
-  ctx.fillText(ROOM_CONFIG.displayName, W / 2, H / 2);
+  ctx.fillText(room.displayName, W / 2, H / 2);
 }
 
 // Second display: the shared content, a simple slide.
@@ -553,8 +652,52 @@ function drawSharedScreen(ctx, t) {
   }
 }
 
+// A snake plant: a dark pot with tall upright blades.
+function buildSnakePlant(scene, x, z) {
+  const group = new THREE.Group();
+
+  const pot = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.19, 0.15, 0.36, 24),
+    new THREE.MeshStandardMaterial({ color: 0x2B333D, roughness: 0.55 })
+  );
+  pot.position.y = 0.18;
+  group.add(pot);
+
+  const soil = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.175, 0.175, 0.02, 24),
+    new THREE.MeshStandardMaterial({ color: 0x2B211B, roughness: 1 })
+  );
+  soil.position.y = 0.36;
+  group.add(soil);
+
+  const greens = [0x2F5D3A, 0x3E7448, 0x27503A];
+  const bladeGeo = new THREE.ConeGeometry(0.05, 1, 6); // unit height, tip up
+  for (let i = 0; i < 14; i++) {
+    const angle = i * 2.4;
+    const ring = 0.02 + (i % 4) * 0.028;
+    const h = 0.55 + (((i * 37) % 10) / 10) * 0.75;
+    const blade = new THREE.Mesh(
+      bladeGeo,
+      new THREE.MeshStandardMaterial({ color: greens[i % greens.length], roughness: 0.6 })
+    );
+    blade.scale.set(1, h, 0.35);
+    blade.position.set(Math.cos(angle) * ring, 0.36 + h / 2, Math.sin(angle) * ring);
+    blade.rotation.order = 'YXZ';
+    blade.rotation.set(0, -angle, -0.14); // lean each blade slightly outward
+    group.add(blade);
+  }
+
+  group.position.set(x, 0, z);
+  group.scale.setScalar(0.8);
+  scene.add(group);
+}
+
 // A rubber-plant style floor plant: ceramic pot, a trunk and leaves spiralling up it.
-function buildPlant(scene, x, z) {
+function buildPlant(scene, x, z, kind) {
+  if (kind === 'snake') {
+    buildSnakePlant(scene, x, z);
+    return;
+  }
   const group = new THREE.Group();
 
   const pot = new THREE.Mesh(
@@ -852,7 +995,7 @@ body { display: block; background: ${BRAND.navy}; }
 /* -------------------------------------------------------------------------- */
 /*  Component                                                                  */
 /* -------------------------------------------------------------------------- */
-export default function EuxGBoardroomDemo() {
+export default function RoomDemo({ room = FALLBACK_ROOM }) {
   const mountRef = useRef(null);
   const sceneObjectsRef = useRef({});
 
@@ -866,6 +1009,10 @@ export default function EuxGBoardroomDemo() {
   const lastManualChangeRef = useRef(0);
   const MANUAL_GRACE_MS = 6000;
 
+  useEffect(() => {
+    document.title = `${room.displayName} | TANDI Laboratories`;
+  }, [room.displayName]);
+
   // Poll the live Dataverse-backed room state via the Azure Function proxy.
   // Skips applying updates for a few seconds after a manual interaction,
   // so a poll landing mid-drag doesn't yank the control back under the user's hand.
@@ -874,7 +1021,7 @@ export default function EuxGBoardroomDemo() {
 
     async function pollRoomState() {
       try {
-        const res = await fetch(`/api/room-state?room_id=${ROOM_CONFIG.roomId}`);
+        const res = await fetch(`/api/room-state?room_id=${room.roomId}`);
         if (!res.ok) throw new Error(`Request failed: ${res.status}`);
         const rows = await res.json();
         if (cancelled) return;
@@ -941,7 +1088,7 @@ export default function EuxGBoardroomDemo() {
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, []);
+  }, [room.roomId]);
 
   // Call this from each control's handler to mark a manual interaction,
   // so the next poll (within MANUAL_GRACE_MS) doesn't immediately overwrite it.
@@ -965,11 +1112,12 @@ export default function EuxGBoardroomDemo() {
     mount.appendChild(renderer.domElement);
 
     const roomW = 6, roomH = 3, roomD = 5;
+    const theme = { ...DEFAULT_THEME, ...room.theme };
 
-    const woodTex = makeWoodTexture();
+    const woodTex = makeWoodTexture(theme.wood);
     const floorTex = makeFloorTexture();
-    const wallTex = makeWallTexture();
-    const fabricTex = makeFabricTexture('#2A4766');
+    const wallTex = makeWallTexture(theme.wall);
+    const fabricTex = makeFabricTexture(theme.chair);
 
     const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.85 });
     const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.95 });
@@ -990,7 +1138,7 @@ export default function EuxGBoardroomDemo() {
     // Three portrait windows with blinds along the side wall
     const windowW = 0.7, windowH = 1.7;
     // The glass shows a city skyline, revealed as the blinds open. Self-lit so it reads as daylight.
-    const skylineTex = makeSkylineTexture();
+    const skylineTex = room.windowView === 'parkland' ? makeParklandTexture() : makeSkylineTexture();
     const glassMat = new THREE.MeshStandardMaterial({
       color: 0xFFFFFF, map: skylineTex, emissive: 0xFFFFFF, emissiveMap: skylineTex,
       emissiveIntensity: 0.55, roughness: 0.1, metalness: 0.05,
@@ -1022,11 +1170,13 @@ export default function EuxGBoardroomDemo() {
       blindsMeshes.push(blind);
     });
 
-    // Two wall-mounted displays with the video bar centred beneath the gap between them.
-    const screenW = 1.6, screenH = 0.9, screenGap = 0.16, screenY = 1.75;
+    // One or two wall-mounted displays, with the video bar centred beneath them.
+    const dual = room.screens === 2;
+    const screenW = dual ? 1.6 : 2.0, screenH = dual ? 0.9 : 1.125;
+    const screenGap = 0.16, screenY = 1.75;
+    const screenXs = dual ? [-1, 1].map((side) => side * (screenW / 2 + screenGap / 2)) : [0];
     const bezelMat = new THREE.MeshStandardMaterial({ color: 0x0E1622, roughness: 0.4 });
-    const screens = [-1, 1].map((side) => {
-      const x = side * (screenW / 2 + screenGap / 2);
+    const screens = screenXs.map((x) => {
       const bezel = new THREE.Mesh(new THREE.BoxGeometry(screenW + 0.12, screenH + 0.12, 0.05), bezelMat);
       bezel.position.set(x, screenY, -roomD / 2 + 0.03);
       scene.add(bezel);
@@ -1049,8 +1199,9 @@ export default function EuxGBoardroomDemo() {
       return { face, ctx, texture };
     });
 
-    // Video bar, sitting under the gap between the two displays
-    const barW = 0.9, barY = 1.12;
+    // Video bar, centred under the display or under the gap between the two displays
+    const barW = room.videoBarWidth ?? 0.9;
+    const barY = screenY - (screenH + 0.12) / 2 - 0.11;
     const videoBar = new THREE.Mesh(
       new THREE.BoxGeometry(barW, 0.1, 0.09),
       new THREE.MeshStandardMaterial({ color: 0x1D2A3A, roughness: 0.5 })
@@ -1129,7 +1280,7 @@ export default function EuxGBoardroomDemo() {
     scene.add(wedgeBody);
 
     const slopeAngle = Math.atan2(yTopBack - yTopFront, zFront - zBack);
-    const touchPanelMat = new THREE.MeshStandardMaterial({ map: makeTouchPanelTexture(false, ROOM_CONFIG.displayName), roughness: 0.3 });
+    const touchPanelMat = new THREE.MeshStandardMaterial({ map: makeTouchPanelTexture(false, room.displayName), roughness: 0.3 });
     const touchPanel = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2 - 0.01, 0.2), touchPanelMat);
     touchPanel.rotation.x = -(Math.PI / 2 - slopeAngle);
     touchPanel.position.set(0, 0.79 + (yTopFront + yTopBack) / 2 + 0.003, tableCenterZ + 0.35);
@@ -1144,7 +1295,7 @@ export default function EuxGBoardroomDemo() {
     });
 
     // Rug under the table: anchors the seating area and picks up the brand navy.
-    const rugMat = new THREE.MeshStandardMaterial({ map: makeRugTexture(), roughness: 1 });
+    const rugMat = new THREE.MeshStandardMaterial({ map: makeRugTexture(theme.rug, theme.rugBorder), roughness: 1 });
     const rug = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.012, 3.1), rugMat);
     rug.position.set(0, 0.006, -0.05);
     scene.add(rug);
@@ -1158,7 +1309,7 @@ export default function EuxGBoardroomDemo() {
     const sideLength = -sideZstart;
     const arcLength = Math.PI * chairRadius;
     const totalLength = 2 * sideLength + arcLength;
-    const numChairs = ROOM_CONFIG.capacity;
+    const numChairs = room.capacity;
 
     for (let i = 0; i < numChairs; i++) {
       const t = ((i + 0.5) / numChairs) * totalLength;
@@ -1183,7 +1334,7 @@ export default function EuxGBoardroomDemo() {
     }
 
     // Plant in the back corner, clear of the thermostat and the screens.
-    buildPlant(scene, 2.6, -2.0);
+    buildPlant(scene, 2.6, -2.0, theme.plant);
 
     const ambient = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambient);
@@ -1351,16 +1502,16 @@ export default function EuxGBoardroomDemo() {
         if (now - objs.lastScreenDraw > 0.1) {
           objs.lastScreenDraw = now;
           const elapsed = now - objs.screenPhaseStart;
-          const [left, right] = objs.screens;
+          const [primary, secondary] = objs.screens;
           if (objs.screenPhase === 'joining') {
-            drawJoiningScreen(left.ctx, elapsed);
-            drawSideBackdrop(right.ctx);
+            drawJoiningScreen(primary.ctx, elapsed, room);
+            if (secondary) drawSideBackdrop(secondary.ctx, room);
           } else {
-            drawCallScreen(left.ctx, elapsed);
-            drawSharedScreen(right.ctx, elapsed);
+            drawCallScreen(primary.ctx, elapsed, room);
+            if (secondary) drawSharedScreen(secondary.ctx, elapsed);
           }
-          left.texture.needsUpdate = true;
-          right.texture.needsUpdate = true;
+          primary.texture.needsUpdate = true;
+          if (secondary) secondary.texture.needsUpdate = true;
         }
       }
 
@@ -1388,7 +1539,7 @@ export default function EuxGBoardroomDemo() {
       mount.removeChild(renderer.domElement);
       renderer.dispose();
     };
-  }, []);
+  }, [room]);
 
   useEffect(() => {
     if (sceneObjectsRef.current) {
@@ -1419,8 +1570,8 @@ export default function EuxGBoardroomDemo() {
       face.material.needsUpdate = true;
     });
     videoBarLed.material.emissive.set(screenOn ? 0x00D4E8 : 0x000000);
-    setMap(touchPanel.material, makeTouchPanelTexture(screenOn, ROOM_CONFIG.displayName));
-  }, [screenOn]);
+    setMap(touchPanel.material, makeTouchPanelTexture(screenOn, room.displayName));
+  }, [screenOn, room.displayName]);
 
   useEffect(() => {
     if (sceneObjectsRef.current) {
@@ -1455,11 +1606,12 @@ export default function EuxGBoardroomDemo() {
           </div>
           <div className="rm-sep" />
           <div className="rm-title">
-            <div className="rm-kicker">{ROOM_CONFIG.roomType}</div>
-            <div className="rm-name">{ROOM_CONFIG.displayName}</div>
+            <div className="rm-kicker">{room.roomType}</div>
+            <div className="rm-name">{room.displayName}</div>
           </div>
           <div className="rm-meta">
-            <span className="rm-badge">Seats {ROOM_CONFIG.capacity}</span>
+            {room.location && <span className="rm-badge">{room.location}</span>}
+            <span className="rm-badge">Seats {room.capacity}</span>
             <span className={`rm-live${liveConnected ? ' on' : ''}`} role="status">
               <i className="rm-dot" />
               {liveConnected ? 'Live' : 'Offline'}
