@@ -154,9 +154,10 @@ function makeLightPanelTexture(brightness) {
 }
 
 // Panorama of a London skyline seen through the windows, drawn as soft silhouettes:
-// hazy distant towers, a mid layer with the Gherkin, and varied low-rise roofs in front.
+// hazy distant towers, a mid layer, the Leadenhall Building with the Gherkin just behind it,
+// and varied low-rise roofs in front.
 // Each window only shows a slice of this (roughly x 15-225, 495-705 and 975-1185),
-// so the landmark sits inside the middle window's slice.
+// so the landmarks sit inside the middle window's slice.
 function makeSkylineTexture() {
   const W = 1200, H = 512;
   const canvas = document.createElement('canvas');
@@ -228,31 +229,69 @@ function makeSkylineTexture() {
   layer('#93A9C0', 0.16, 0.4, 40, 90, ['flat', 'stepped', 'slope', 'antenna', 'flat']); // mid
 
   // The Gherkin (30 St Mary Axe): an approximate bullet shape with a faint diagonal lattice.
-  const gx = 590, gh = H * 0.62, ga = 36;
-  ctx.fillStyle = '#6B84A0';
-  ctx.beginPath();
-  ctx.moveTo(gx - ga * 0.62, H);
-  ctx.bezierCurveTo(gx - ga * 1.05, H - gh * 0.3, gx - ga * 1.0, H - gh * 0.58, gx - ga * 0.55, H - gh * 0.85);
-  ctx.bezierCurveTo(gx - ga * 0.3, H - gh * 0.96, gx - ga * 0.08, H - gh * 0.99, gx, H - gh);
-  ctx.bezierCurveTo(gx + ga * 0.08, H - gh * 0.99, gx + ga * 0.3, H - gh * 0.96, gx + ga * 0.55, H - gh * 0.85);
-  ctx.bezierCurveTo(gx + ga * 1.0, H - gh * 0.58, gx + ga * 1.05, H - gh * 0.3, gx + ga * 0.62, H);
-  ctx.closePath();
-  ctx.fill();
-  ctx.save();
-  ctx.clip();
-  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
-  ctx.lineWidth = 1.5;
-  for (let i = 0; i < 160; i += 14) {
+  const gherkin = (gx, heightFrac, color) => {
+    const gh = H * heightFrac, ga = 33;
+    ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.moveTo(gx - 80 + i, H);
-    ctx.lineTo(gx - 80 + i + 90, H - gh);
-    ctx.stroke();
+    ctx.moveTo(gx - ga * 0.62, H);
+    ctx.bezierCurveTo(gx - ga * 1.05, H - gh * 0.3, gx - ga * 1.0, H - gh * 0.58, gx - ga * 0.55, H - gh * 0.85);
+    ctx.bezierCurveTo(gx - ga * 0.3, H - gh * 0.96, gx - ga * 0.08, H - gh * 0.99, gx, H - gh);
+    ctx.bezierCurveTo(gx + ga * 0.08, H - gh * 0.99, gx + ga * 0.3, H - gh * 0.96, gx + ga * 0.55, H - gh * 0.85);
+    ctx.bezierCurveTo(gx + ga * 1.0, H - gh * 0.58, gx + ga * 1.05, H - gh * 0.3, gx + ga * 0.62, H);
+    ctx.closePath();
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 160; i += 14) {
+      ctx.beginPath();
+      ctx.moveTo(gx - 80 + i, H);
+      ctx.lineTo(gx - 80 + i + 90, H - gh);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(gx + 80 - i, H);
+      ctx.lineTo(gx + 80 - i - 90, H - gh);
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+
+  // The Leadenhall Building (the Cheesegrater): a tall slim core with a wedge whose roofline
+  // slopes away from it, and a faint bracing pattern.
+  const leadenhall = (x0, color) => {
+    const coreW = 26, wedgeW = 90;
+    const coreTop = H * 0.26, wedgeHigh = H * 0.3, wedgeLow = H * 0.52;
+    ctx.fillStyle = color;
+    ctx.fillRect(x0, coreTop, coreW, H - coreTop);
+    ctx.fillRect(x0 + 4, coreTop - 12, coreW - 8, 12); // crown
     ctx.beginPath();
-    ctx.moveTo(gx + 80 - i, H);
-    ctx.lineTo(gx + 80 - i - 90, H - gh);
-    ctx.stroke();
-  }
-  ctx.restore();
+    ctx.moveTo(x0 + coreW, H);
+    ctx.lineTo(x0 + coreW, wedgeHigh);
+    ctx.lineTo(x0 + coreW + wedgeW, wedgeLow);
+    ctx.lineTo(x0 + coreW + wedgeW, H);
+    ctx.closePath();
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 240; i += 24) {
+      ctx.beginPath();
+      ctx.moveTo(x0 + coreW, H - i);
+      ctx.lineTo(x0 + coreW + wedgeW, H - i - 90);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x0 + coreW + wedgeW, H - i);
+      ctx.lineTo(x0 + coreW, H - i - 90);
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+
+  // The Gherkin sits a building back, hazier and partly hidden, with the Leadenhall Building in front.
+  gherkin(640, 0.6, '#86A0BA');
+  leadenhall(515, '#6B84A0');
 
   layer('#6E86A0', 0.07, 0.22, 46, 110, ['gable', 'mansard', 'flat', 'gable', 'flat']); // low-rise roofs in front
 
@@ -472,6 +511,182 @@ function drawRoomGlyph(ctx, cx, cy) {
   ctx.beginPath();
   ctx.arc(cx, cy + 28, 24, Math.PI, 0);
   ctx.fill();
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Digital signage shown on the screens while no meeting is running           */
+/*  Appspace puts signage on inactive screens; this mimics that for the demo.  */
+/*  With two screens it reads across both; with one it stacks the same words.  */
+/* -------------------------------------------------------------------------- */
+// AVI-SPL brand colours (from the brand colour guidelines).
+// The background navy is taken from the VIBE logo (#1D2953); the brand page's Nightshade is #0A1D5F.
+const AVISPL = { navy: '#1D2953', navyDark: '#141C3C', cobalt: '#0972CE', turquoise: '#37C1CE', poppy: '#F89021' };
+
+const SIGNAGE = {
+  welcome: 'Welcome to',
+  brand: 'AVI-SPL',
+  event: 'VIBE',
+  hashtag: '#futureofwork',
+  // The VIBE logo, light version for dark backgrounds. Save it at public/vibe-logo-transparent.png.
+  // If the file is missing the signage falls back to plain text.
+  logoUrl: '/vibe-logo-transparent.png',
+};
+
+// The logo file has a lot of empty margin, so find where the artwork actually is and crop to that.
+// It is only ever scaled evenly, never stretched.
+let signageLogo = null;
+function loadSignageLogo() {
+  if (typeof Image === 'undefined' || signageLogo) return;
+  const img = new Image();
+  img.onload = () => {
+    const probe = document.createElement('canvas');
+    probe.width = img.width;
+    probe.height = img.height;
+    const pctx = probe.getContext('2d');
+    pctx.drawImage(img, 0, 0);
+    const { data, width, height } = pctx.getImageData(0, 0, probe.width, probe.height);
+    let minX = width, minY = height, maxX = -1, maxY = -1;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (data[(y * width + x) * 4 + 3] > 10) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    signageLogo = maxX < 0
+      ? { img, sx: 0, sy: 0, sw: width, sh: height }
+      : { img, sx: minX, sy: minY, sw: maxX - minX + 1, sh: maxY - minY + 1 };
+  };
+  img.src = SIGNAGE.logoUrl;
+}
+
+// Draws the logo at the given height and returns its width.
+function drawSignageLogo(ctx, x, y, height) {
+  const { img, sx, sy, sw, sh } = signageLogo;
+  const width = (height * sw) / sh;
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, width, height);
+  return width;
+}
+
+// Largest font size, up to maxSize, at which the text still fits in maxWidth.
+function fitFontSize(ctx, text, weight, maxWidth, maxSize) {
+  ctx.font = `${weight} ${maxSize}px ${FONT}`;
+  const width = ctx.measureText(text).width;
+  return Math.min(maxSize, Math.floor((maxSize * maxWidth) / width));
+}
+
+// Draws one screen's share of the signage. index is this screen's position (0 is left)
+// and count is how many screens there are. Everything is laid out on one wide canvas
+// (count x 1280 px) and each screen shows its own slice, so the words run across both.
+function drawSignage(ctx, now, index, count) {
+  const W = SCREEN_W, H = SCREEN_H;
+  const total = W * count;
+  ctx.save();
+  ctx.translate(-index * W, 0);
+
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, AVISPL.navy);
+  g.addColorStop(1, AVISPL.navyDark);
+  ctx.fillStyle = g;
+  ctx.fillRect(index * W, 0, W, H);
+
+  // Soft colour glows for the text-only version. With the logo the background stays plain,
+  // so the logo never sits over anything busy.
+  if (!signageLogo) {
+    const base = ctx.globalAlpha;
+    [[total - 120, 40, 300, AVISPL.cobalt, 0.2], [80, H - 40, 240, AVISPL.turquoise, 0.14]].forEach(([x, y, r, color, a]) => {
+      ctx.globalAlpha = base * a;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.globalAlpha = base;
+  }
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const margin = 88, colWidth = W - margin * 2;
+  const { welcome, brand, event, hashtag } = SIGNAGE;
+
+  if (signageLogo) {
+    // The logo is used exactly as supplied, on its own with clear space around it.
+    // The hashtag sits well below it rather than tight against it.
+    const logoH = count === 2 ? 320 : 300, logoY = 110;
+    const logoW = (logoH * signageLogo.sw) / signageLogo.sh;
+    if (count === 2) {
+      // Left screen: "Welcome to", ending near the seam. Right screen: the logo, then the hashtag.
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = `700 ${fitFontSize(ctx, welcome, 700, colWidth, 170)}px ${FONT}`;
+      ctx.fillText(welcome, W - margin, logoY + logoH / 2);
+      drawSignageLogo(ctx, W + margin, logoY, logoH);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = AVISPL.turquoise;
+      ctx.font = `700 ${fitFontSize(ctx, hashtag, 700, logoW, 96)}px ${FONT}`;
+      ctx.fillText(hashtag, W + margin, 565);
+    } else {
+      const logoX = W - margin - logoW;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = `700 ${fitFontSize(ctx, welcome, 700, logoX - margin - 40, 110)}px ${FONT}`;
+      ctx.fillText(welcome, margin, logoY + logoH / 2);
+      drawSignageLogo(ctx, logoX, logoY, logoH);
+      ctx.fillStyle = AVISPL.turquoise;
+      ctx.font = `700 ${fitFontSize(ctx, hashtag, 700, colWidth, 100)}px ${FONT}`;
+      ctx.fillText(hashtag, margin, 540);
+    }
+  } else if (count === 2) {
+    // No logo file: plain text. One size for both big words so they match across the seam.
+    const size = Math.min(fitFontSize(ctx, brand, 800, colWidth, 230), fitFontSize(ctx, event, 800, colWidth, 230));
+    ctx.font = `800 ${size}px ${FONT}`;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(brand, margin, 380);
+    ctx.fillText(event, W + margin, 380);
+
+    ctx.fillStyle = AVISPL.turquoise;
+    ctx.font = `600 64px ${FONT}`;
+    ctx.fillText(welcome, margin, 205);
+    ctx.font = `700 ${fitFontSize(ctx, hashtag, 700, colWidth, 104)}px ${FONT}`;
+    ctx.fillText(hashtag, W + margin, 548);
+
+    ctx.fillStyle = AVISPL.poppy;
+    ctx.beginPath(); ctx.roundRect(W + margin, 205 - 5, 120, 10, 5); ctx.fill();
+  } else {
+    ctx.fillStyle = AVISPL.turquoise;
+    ctx.font = `600 52px ${FONT}`;
+    ctx.fillText(welcome, margin, 215);
+
+    const main = `${brand} ${event}`;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = `800 ${fitFontSize(ctx, main, 800, colWidth, 160)}px ${FONT}`;
+    ctx.fillText(main, margin, 340);
+
+    ctx.fillStyle = AVISPL.turquoise;
+    ctx.font = `700 ${fitFontSize(ctx, hashtag, 700, colWidth, 96)}px ${FONT}`;
+    ctx.fillText(hashtag, margin, 465);
+
+    ctx.fillStyle = AVISPL.poppy;
+    ctx.beginPath(); ctx.roundRect(margin, 530, 120, 10, 5); ctx.fill();
+  }
+
+  // Slow waveform along the bottom, thick enough to read when the screens are small.
+  const bars = 14 * count, step = total / bars, baseY = 664;
+  const grad = ctx.createLinearGradient(0, 0, total, 0);
+  grad.addColorStop(0, AVISPL.cobalt);
+  grad.addColorStop(1, AVISPL.turquoise);
+  ctx.fillStyle = grad;
+  for (let i = 0; i < bars; i++) {
+    const v = (Math.sin(now * 1.4 + i * 0.7) + Math.sin(now * 0.8 + i * 0.31) + 2) / 4;
+    const h = 12 + v * 48;
+    ctx.beginPath();
+    ctx.roundRect(i * step + step * 0.22, baseY - h / 2, step * 0.56, h, 8);
+    ctx.fill();
+  }
+
+  ctx.restore();
 }
 
 function drawJoiningScreen(ctx, t, room) {
@@ -855,7 +1070,7 @@ function SliderTile({ id, icon, label, valueText, min, max, step, value, onChang
 }
 
 const STYLES = `
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
 
 html, body, #root { height: 100%; margin: 0; padding: 0; max-width: none; }
 body { display: block; background: ${BRAND.navy}; }
@@ -1113,6 +1328,7 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
 
     const roomW = 6, roomH = 3, roomD = 5;
     const theme = { ...DEFAULT_THEME, ...room.theme };
+    loadSignageLogo();
 
     const woodTex = makeWoodTexture(theme.wood);
     const floorTex = makeFloorTexture();
@@ -1196,6 +1412,9 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
       const ctx = canvas.getContext('2d');
       const texture = new THREE.CanvasTexture(canvas);
       texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      face.material.map = texture;
+      face.material.color.set(0xffffff);
+      face.material.needsUpdate = true;
       return { face, ctx, texture };
     });
 
@@ -1491,28 +1710,28 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
       objs.ambient.intensity = minAmbient + (baseAmbient - minAmbient) * daylightFactor + avgCeilingBrightness * 0.12;
       objs.daylight.intensity = minDaylight + (baseDaylight - minDaylight) * daylightFactor;
 
-      // Screen: joining state first, then the call. Redrawn about 10 times a second.
-      if (objs.screenOn) {
-        const now = performance.now() / 1000;
-        if (objs.screenPhase === 'joining' && now - objs.screenPhaseStart >= CALL_CONFIG.joiningSeconds) {
-          objs.screenPhase = 'call';
-          objs.screenPhaseStart = now;
-          objs.lastScreenDraw = 0;
+      // Screens: signage while idle, then "Joining meeting", then the call. Redrawn about 10 times a second.
+      const clockNow = performance.now() / 1000;
+      if (objs.screenPhase === 'joining' && clockNow - objs.screenPhaseStart >= CALL_CONFIG.joiningSeconds) {
+        objs.screenPhase = 'call';
+        objs.screenPhaseStart = clockNow;
+        objs.lastScreenDraw = 0;
+      }
+      if (clockNow - objs.lastScreenDraw > 0.1) {
+        objs.lastScreenDraw = clockNow;
+        const elapsed = clockNow - objs.screenPhaseStart;
+        const [primary, secondary] = objs.screens;
+        if (objs.screenPhase === 'off') {
+          objs.screens.forEach((screen, i) => drawSignage(screen.ctx, clockNow, i, objs.screens.length));
+        } else if (objs.screenPhase === 'joining') {
+          drawJoiningScreen(primary.ctx, elapsed, room);
+          if (secondary) drawSideBackdrop(secondary.ctx, room);
+        } else {
+          drawCallScreen(primary.ctx, elapsed, room);
+          if (secondary) drawSharedScreen(secondary.ctx, elapsed);
         }
-        if (now - objs.lastScreenDraw > 0.1) {
-          objs.lastScreenDraw = now;
-          const elapsed = now - objs.screenPhaseStart;
-          const [primary, secondary] = objs.screens;
-          if (objs.screenPhase === 'joining') {
-            drawJoiningScreen(primary.ctx, elapsed, room);
-            if (secondary) drawSideBackdrop(secondary.ctx, room);
-          } else {
-            drawCallScreen(primary.ctx, elapsed, room);
-            if (secondary) drawSharedScreen(secondary.ctx, elapsed);
-          }
-          primary.texture.needsUpdate = true;
-          if (secondary) secondary.texture.needsUpdate = true;
-        }
+        primary.texture.needsUpdate = true;
+        if (secondary) secondary.texture.needsUpdate = true;
       }
 
       renderer.render(scene, camera);
@@ -1559,16 +1778,11 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
     const objs = sceneObjectsRef.current;
     const { screens, videoBarLed, touchPanel } = objs;
     if (!screens) return;
-    // Turning on starts at "Joining meeting"; turning off goes back to a black screen.
+    // Turning on starts at "Joining meeting"; turning off goes back to the signage.
     objs.screenOn = screenOn;
     objs.screenPhase = screenOn ? 'joining' : 'off';
     objs.screenPhaseStart = performance.now() / 1000;
     objs.lastScreenDraw = 0;
-    screens.forEach(({ face, texture }) => {
-      face.material.map = screenOn ? texture : null;
-      face.material.color.set(screenOn ? 0xffffff : 0x0a0a0a);
-      face.material.needsUpdate = true;
-    });
     videoBarLed.material.emissive.set(screenOn ? 0x00D4E8 : 0x000000);
     setMap(touchPanel.material, makeTouchPanelTexture(screenOn, room.displayName));
   }, [screenOn, room.displayName]);
