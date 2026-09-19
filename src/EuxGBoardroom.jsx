@@ -133,6 +133,138 @@ function makeLightPanelTexture(brightness) {
   }, 64, 1, 1);
 }
 
+// Panorama of a London skyline seen through the windows, drawn as soft silhouettes:
+// hazy distant towers, a mid layer with the Gherkin, and varied low-rise roofs in front.
+// Each window only shows a slice of this (roughly x 15-225, 495-705 and 975-1185),
+// so the landmark sits inside the middle window's slice.
+function makeSkylineTexture() {
+  const W = 1200, H = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, '#BFDDF5');
+  sky.addColorStop(0.65, '#E3F0FB');
+  sky.addColorStop(1, '#F6FAFE');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  // Seeded so the skyline is the same on every load.
+  let seed = 11;
+  const rand = () => {
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647;
+  };
+  const pick = (options) => options[Math.floor(rand() * options.length)];
+
+  const drawBuilding = (x, w, h, roof) => {
+    const top = H - h;
+    ctx.fillRect(x, top, w, h);
+    if (roof === 'gable') {
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x + w / 2, top - w * 0.28);
+      ctx.lineTo(x + w, top);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillRect(x + w * 0.7, top - w * 0.24, 5, 18); // chimney
+    } else if (roof === 'mansard') {
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x + w * 0.12, top - w * 0.16);
+      ctx.lineTo(x + w * 0.88, top - w * 0.16);
+      ctx.lineTo(x + w, top);
+      ctx.closePath();
+      ctx.fill();
+    } else if (roof === 'stepped') {
+      ctx.fillRect(x + w * 0.12, top - 16, w * 0.76, 16);
+      ctx.fillRect(x + w * 0.3, top - 30, w * 0.4, 14);
+    } else if (roof === 'slope') {
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x + w, top);
+      ctx.lineTo(x + w, top - w * 0.45);
+      ctx.closePath();
+      ctx.fill();
+    } else if (roof === 'antenna') {
+      ctx.fillRect(x + w * 0.5, top - 40, 3, 40);
+    }
+  };
+
+  const layer = (color, minH, maxH, minW, maxW, roofs) => {
+    ctx.fillStyle = color;
+    let x = -20;
+    while (x < W) {
+      const w = minW + rand() * (maxW - minW);
+      const h = (minH + rand() * (maxH - minH)) * H;
+      drawBuilding(x, w, h, pick(roofs));
+      x += w + 1 + rand() * 8;
+    }
+  };
+
+  layer('#B9CADB', 0.22, 0.46, 34, 80, ['flat', 'slope', 'stepped', 'flat']); // hazy distance
+  layer('#93A9C0', 0.16, 0.4, 40, 90, ['flat', 'stepped', 'slope', 'antenna', 'flat']); // mid
+
+  // The Gherkin (30 St Mary Axe): an approximate bullet shape with a faint diagonal lattice.
+  const gx = 590, gh = H * 0.62, ga = 36;
+  ctx.fillStyle = '#6B84A0';
+  ctx.beginPath();
+  ctx.moveTo(gx - ga * 0.62, H);
+  ctx.bezierCurveTo(gx - ga * 1.05, H - gh * 0.3, gx - ga * 1.0, H - gh * 0.58, gx - ga * 0.55, H - gh * 0.85);
+  ctx.bezierCurveTo(gx - ga * 0.3, H - gh * 0.96, gx - ga * 0.08, H - gh * 0.99, gx, H - gh);
+  ctx.bezierCurveTo(gx + ga * 0.08, H - gh * 0.99, gx + ga * 0.3, H - gh * 0.96, gx + ga * 0.55, H - gh * 0.85);
+  ctx.bezierCurveTo(gx + ga * 1.0, H - gh * 0.58, gx + ga * 1.05, H - gh * 0.3, gx + ga * 0.62, H);
+  ctx.closePath();
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 160; i += 14) {
+    ctx.beginPath();
+    ctx.moveTo(gx - 80 + i, H);
+    ctx.lineTo(gx - 80 + i + 90, H - gh);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(gx + 80 - i, H);
+    ctx.lineTo(gx + 80 - i - 90, H - gh);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  layer('#6E86A0', 0.07, 0.22, 46, 110, ['gable', 'mansard', 'flat', 'gable', 'flat']); // low-rise roofs in front
+
+  // A few trees along the bottom edge for softness.
+  ctx.fillStyle = '#587189';
+  for (let i = 0; i < 12; i++) {
+    const tx = rand() * W;
+    const r = 14 + rand() * 12;
+    const ty = H - (0.05 + rand() * 0.07) * H;
+    ctx.fillRect(tx - 2, ty, 4, H - ty);
+    ctx.beginPath();
+    ctx.arc(tx, ty, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  return new THREE.CanvasTexture(canvas);
+}
+
+function makeRugTexture() {
+  return makeCanvasTexture((ctx, s) => {
+    ctx.fillStyle = '#6F8DAE';
+    ctx.fillRect(0, 0, s, s);
+    for (let i = 0; i < 1200; i++) {
+      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.05)';
+      ctx.fillRect(Math.random() * s, Math.random() * s, 2, 2);
+    }
+    ctx.strokeStyle = '#A9C0D8';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(14, 14, s - 28, s - 28);
+  }, 256, 1, 1);
+}
+
 function makeTouchPanelTexture(active, roomName) {
   return makeCanvasTexture((ctx, s) => {
     ctx.fillStyle = BRAND.navyDeep;
@@ -419,6 +551,60 @@ function drawSharedScreen(ctx, t) {
     ctx.fillStyle = `rgba(31,31,31,${1 - t / 0.5})`;
     ctx.fillRect(0, 0, W, H);
   }
+}
+
+// A rubber-plant style floor plant: ceramic pot, a trunk and leaves spiralling up it.
+function buildPlant(scene, x, z) {
+  const group = new THREE.Group();
+
+  const pot = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.2, 0.16, 0.4, 24),
+    new THREE.MeshStandardMaterial({ color: 0xD7DEE6, roughness: 0.6 })
+  );
+  pot.position.y = 0.2;
+  group.add(pot);
+
+  const soil = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.185, 0.185, 0.02, 24),
+    new THREE.MeshStandardMaterial({ color: 0x2B211B, roughness: 1 })
+  );
+  soil.position.y = 0.4;
+  group.add(soil);
+
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.022, 0.034, 1.25, 8),
+    new THREE.MeshStandardMaterial({ color: 0x5A4232, roughness: 0.9 })
+  );
+  trunk.position.y = 0.4 + 1.25 / 2;
+  group.add(trunk);
+
+  const greens = [0x2F6B3A, 0x3C7D45, 0x28582F, 0x357443];
+  const leafGeo = new THREE.SphereGeometry(1, 12, 8);
+  const leafCount = 28;
+  const halfLen = 0.18;
+  for (let i = 0; i < leafCount; i++) {
+    const f = i / (leafCount - 1);
+    const angle = i * 2.4; // golden-angle spiral so leaves don't stack
+    const tilt = 0.25 + f * 0.75; // lower leaves spread wide, upper leaves point up
+    const baseY = 0.7 + f * 0.85;
+    const leaf = new THREE.Mesh(
+      leafGeo,
+      new THREE.MeshStandardMaterial({ color: greens[i % greens.length], roughness: 0.7, side: THREE.DoubleSide })
+    );
+    leaf.scale.set(halfLen, 0.02, 0.1);
+    const reach = 0.04 + halfLen * Math.cos(tilt);
+    leaf.position.set(
+      Math.cos(angle) * reach,
+      baseY + halfLen * Math.sin(tilt),
+      Math.sin(angle) * reach
+    );
+    leaf.rotation.set(0, -angle, tilt);
+    group.add(leaf);
+  }
+
+  group.scale.setScalar(0.75); // 25% smaller than the drawn size
+  group.position.set(x, 0, z);
+  scene.add(group);
 }
 
 function buildChair(scene, x, z, rotationY, fabricTex) {
@@ -803,8 +989,11 @@ export default function EuxGBoardroomDemo() {
 
     // Three portrait windows with blinds along the side wall
     const windowW = 0.7, windowH = 1.7;
+    // The glass shows a city skyline, revealed as the blinds open. Self-lit so it reads as daylight.
+    const skylineTex = makeSkylineTexture();
     const glassMat = new THREE.MeshStandardMaterial({
-      color: 0xE3F0FC, emissive: 0xA9CBEF, emissiveIntensity: 0.35, roughness: 0.1, metalness: 0.05,
+      color: 0xFFFFFF, map: skylineTex, emissive: 0xFFFFFF, emissiveMap: skylineTex,
+      emissiveIntensity: 0.55, roughness: 0.1, metalness: 0.05,
     });
     const blindMat = new THREE.MeshStandardMaterial({ color: 0xAEB8C6, roughness: 0.8 });
     // Anchor the blind geometry at its top edge so scaling grows downward, not from center
@@ -814,7 +1003,13 @@ export default function EuxGBoardroomDemo() {
 
     const blindsMeshes = [];
     [-1.6, 0, 1.6].forEach((z) => {
-      const glass = new THREE.Mesh(new THREE.PlaneGeometry(windowW, windowH), glassMat);
+      // Each window takes its own slice of one 4 m wide panorama so the skyline runs across all three.
+      const glassGeo = new THREE.PlaneGeometry(windowW, windowH);
+      const uv = glassGeo.attributes.uv;
+      const u0 = (2.0 - (z + windowW / 2)) / 4.0;
+      const u1 = (2.0 - (z - windowW / 2)) / 4.0;
+      for (let i = 0; i < uv.count; i++) uv.setX(i, u0 + uv.getX(i) * (u1 - u0));
+      const glass = new THREE.Mesh(glassGeo, glassMat);
       glass.position.set(-roomW / 2 + 0.01, 1.55, z);
       glass.rotation.y = Math.PI / 2;
       scene.add(glass);
@@ -948,6 +1143,12 @@ export default function EuxGBoardroomDemo() {
       scene.add(leg);
     });
 
+    // Rug under the table: anchors the seating area and picks up the brand navy.
+    const rugMat = new THREE.MeshStandardMaterial({ map: makeRugTexture(), roughness: 1 });
+    const rug = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.012, 3.1), rugMat);
+    rug.position.set(0, 0.006, -0.05);
+    scene.add(rug);
+
     // Chairs spaced evenly along the full seating perimeter: both straight sides
     // plus the curve, treated as one continuous path so there's no gap where the
     // straight side meets the arc. Nothing on the back edge nearest the screen.
@@ -980,6 +1181,9 @@ export default function EuxGBoardroomDemo() {
       }
       buildChair(scene, x, tableCenterZ + localZ, rotY, fabricTex);
     }
+
+    // Plant in the back corner, clear of the thermostat and the screens.
+    buildPlant(scene, 2.6, -2.0);
 
     const ambient = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambient);
