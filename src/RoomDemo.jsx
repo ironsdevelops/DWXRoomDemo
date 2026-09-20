@@ -1728,7 +1728,7 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
         }
         light.fixture.material.emissiveIntensity = light.currentBrightness * 0.9;
         light.fixture.material.emissive.set(0xFAC775);
-        light.point.intensity = light.currentBrightness * 0.8;
+        light.point.intensity = light.currentBrightness * 2.0;
       });
 
       const avgCeilingBrightness =
@@ -1739,7 +1739,7 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
         b.scale.y = objs.currentBlindPosition;
       });
       const daylightFactor = 1 - objs.currentBlindPosition;
-      objs.ambient.intensity = minAmbient + (baseAmbient - minAmbient) * daylightFactor + avgCeilingBrightness * 0.12;
+      objs.ambient.intensity = minAmbient + (baseAmbient - minAmbient) * daylightFactor + avgCeilingBrightness * 0.32;
       objs.daylight.intensity = minDaylight + (baseDaylight - minDaylight) * daylightFactor;
 
       // Screens: signage while idle, then "Joining meeting", then the call. Redrawn about 10 times a second.
