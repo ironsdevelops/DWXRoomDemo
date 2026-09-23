@@ -1683,8 +1683,8 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
 
     // Orbit speed: full speed (the original 0.0022/frame) at the back of the room (angle = π),
     // easing down to 40% of that at the front (angle = 0 or 2π) so the main view lingers longer.
-    const ORBIT_SPEED = 0.0022;
-    const FRONT_SLOWDOWN = 0.2; // fraction shaved off the speed at the front; 0 = no slowdown
+    const ORBIT_SPEED = 0.003;
+    const FRONT_SLOWDOWN = 0.3; // fraction shaved off the speed at the front; 0 = no slowdown
 
     let angle = 0.6;
     let frameId;
