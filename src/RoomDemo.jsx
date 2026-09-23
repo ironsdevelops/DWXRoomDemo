@@ -1681,10 +1681,16 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
     // Pull the camera back on narrow or tall viewports so the whole room stays in frame.
     let orbitRadius = 6.8 * Math.max(1, 1.55 / camera.aspect);
 
+    // Orbit speed: full speed (the original 0.0022/frame) at the back of the room (angle = π),
+    // easing down to 40% of that at the front (angle = 0 or 2π) so the main view lingers longer.
+    const ORBIT_SPEED = 0.0022;
+    const FRONT_SLOWDOWN = 0.8; // fraction shaved off the speed at the front; 0 = no slowdown
+
     let angle = 0.6;
     let frameId;
     const animate = () => {
-      angle += 0.0022;
+      const frontness = (1 + Math.cos(angle)) / 2; // 1 at the front, 0 at the back
+      angle += ORBIT_SPEED * (1 - frontness * FRONT_SLOWDOWN);
       camera.position.x = Math.sin(angle) * orbitRadius;
       camera.position.z = Math.cos(angle) * orbitRadius;
       camera.position.y = 2.5;
