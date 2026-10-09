@@ -45,6 +45,36 @@ const FALLBACK_ROOM = {
   },
 };
 
+// Air conditioning (a ceiling cassette). The twin simulates the room temperature so a demo shows
+// cause and effect quickly; Dataverse holds the set point (Temperature), the
+// measured value (Room Temperature) and the unit's state (Cooling).
+//   - Cooling running (or no Cooling row): the room moves to the set point at
+//     COOL_RATE, with airflow from the cassette. Faster than real life on purpose.
+//   - Cooling fault or off: no airflow. The room moves to the reported Room
+//     Temperature, or drifts up by HEAT_LOAD at DRIFT_RATE if none is reported.
+// The first poll seeds the room from Room Temperature, so a fault set in
+// Dataverse shows as a hot room straight away.
+const HVAC = {
+  COOL_RATE: 0.5,   // degrees C per second while the unit is working (27.5 to 21 in about 13 s)
+  DRIFT_RATE: 0.08, // degrees C per second when there's no cooling and no reported value
+  HEAT_LOAD: 6,     // degrees above the set point a room settles at with no cooling
+  AT_SETPOINT: 0.2, // within this, the room counts as at the set point
+};
+
+// Reads the Cooling row: "Running", "Off", or a fault such as "Fault: no airflow (E-17)".
+function parseCooling(raw) {
+  const text = String(raw ?? '').trim();
+  const lower = text.toLowerCase();
+  if (!text) return { mode: 'running', code: '', detail: '' };
+  if (/fault|error|fail|alarm|trip/.test(lower)) {
+    const code = (text.match(/\b[A-Z]{1,3}-?\d{1,4}\b/) || [''])[0];
+    const detail = text.replace(/^\s*(fault|error)\s*:?\s*/i, '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+    return { mode: 'fault', code, detail };
+  }
+  if (/^(off|stopped|disabled|standby)$/.test(lower)) return { mode: 'off', code: '', detail: '' };
+  return { mode: 'running', code: '', detail: '' };
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Procedural textures                                                        */
 /* -------------------------------------------------------------------------- */
@@ -455,20 +485,30 @@ function makeTouchPanelTexture(active, roomName) {
   }, 256, 1, 1);
 }
 
-function makeReadoutTexture(tempValue) {
+// Thermostat face: the room temperature large, the set point (or the fault code) below.
+function makeReadoutTexture(roomTemp, setPoint, fault = null) {
   return makeCanvasTexture((ctx, s) => {
     ctx.clearRect(0, 0, s, s);
     ctx.fillStyle = BRAND.navyDeep;
     ctx.beginPath();
     ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = `bold 64px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`${Math.round(tempValue)}°`, s / 2, s / 2 + 2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = `bold 44px ${FONT}`;
+    ctx.fillText(`${roomTemp.toFixed(1)}°`, s / 2, s / 2 - 8);
+    ctx.font = `600 17px ${FONT}`;
+    if (fault) {
+      ctx.fillStyle = '#FF6B5E';
+      ctx.fillText(fault.code || 'FAULT', s / 2, s / 2 + 30);
+    } else {
+      ctx.fillStyle = 'rgba(255,255,255,.7)';
+      ctx.fillText(`SET ${Math.round(setPoint)}°`, s / 2, s / 2 + 30);
+    }
   }, 128, 1, 1);
 }
+
 
 function makeAirQualityTexture(ppmValue) {
   return makeCanvasTexture((ctx, s) => {
@@ -1076,7 +1116,7 @@ const TRACKS = {
   air: 'linear-gradient(90deg, #3FA86B 0%, #E0A930 40%, #C0392B 100%)',
 };
 
-function SliderTile({ id, icon, label, valueText, min, max, step, value, onChange, track }) {
+function SliderTile({ id, icon, label, valueText, min, max, step, value, onChange, track, note, noteTone }) {
   const frac = (value - min) / (max - min);
   return (
     <div className="rm-tile">
@@ -1097,6 +1137,7 @@ function SliderTile({ id, icon, label, valueText, min, max, step, value, onChang
         aria-valuetext={valueText}
         style={{ '--pos': `calc(${frac} * (100% - 14px) + 7px)`, '--track': track }}
       />
+      {note && <div className={`rm-note${noteTone ? ` ${noteTone}` : ''}`}>{note}</div>}
     </div>
   );
 }
@@ -1229,12 +1270,37 @@ body { display: block; background: ${BRAND.navy}; }
   box-shadow: 0 0 0 3px rgba(255,255,255,.18), 0 2px 6px rgba(0,0,0,.4);
 }
 
+.rm-note { font-size: 11px; color: rgba(255,255,255,.6); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rm-note.cool { color: #7FC4FF; }
+.rm-note.heat { color: #FFB27A; }
+.rm-note.fault { color: #FF6B5E; font-weight: 600; }
+
+/* Air conditioning status, top left of the scene */
+.rm-hvac {
+  position: absolute; top: 12px; left: 12px; z-index: 2; display: inline-flex; align-items: center; gap: 8px;
+  max-width: calc(100% - 24px); padding: 6px 12px; border-radius: 20px;
+  background: rgba(10,30,53,.74); border: 1px solid rgba(255,255,255,.12);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  font-size: 12px; font-weight: 500; color: rgba(255,255,255,.85); font-variant-numeric: tabular-nums;
+}
+.rm-hvac i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: rgba(255,255,255,.5); }
+.rm-hvac span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rm-hvac.cool i { background: #4FA8FF; box-shadow: 0 0 0 3px rgba(79,168,255,.25); }
+.rm-hvac.heat i { background: #FF9A4F; box-shadow: 0 0 0 3px rgba(255,154,79,.25); }
+.rm-hvac.ok i { background: ${BRAND.cyan}; }
+.rm-hvac.fault { border-color: rgba(226,87,76,.7); background: rgba(80,18,18,.78); color: #fff; }
+.rm-hvac.fault i { background: ${BRAND.alert}; animation: rm-alarm 1s infinite; }
+@keyframes rm-alarm {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(226,87,76,.35); opacity: 1; }
+  50% { box-shadow: 0 0 0 7px rgba(226,87,76,0); opacity: .45; }
+}
+
 @media (max-width: 640px) {
   .rm-sep, .rm-badge, .rm-word-sub { display: none; }
   .rm-header-inner { gap: 10px; padding: 10px 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .rm-live.on .rm-dot { animation: none; }
+  .rm-live.on .rm-dot, .rm-hvac.fault i { animation: none; }
   .rm-dock, .rm-dock.closed { transition: none; }
 }
 `;
@@ -1251,6 +1317,13 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
   const [screenOn, setScreenOn] = useState(false);
   const [temperature, setTemperature] = useState(21);
   const [airQuality, setAirQuality] = useState(600);
+  // Reported by Dataverse (null when the room has no Room Temperature row) and the unit's state.
+  const [reportedRoomTemp, setReportedRoomTemp] = useState(null);
+  const [cooling, setCooling] = useState(() => parseCooling(''));
+  // Simulated room temperature, copied from the animation loop for the chip and the dock.
+  const [roomTemp, setRoomTemp] = useState(null);
+  // The air conditioning chip waits for the first poll, so it never flashes a default reading.
+  const [firstPollDone, setFirstPollDone] = useState(false);
   const [liveConnected, setLiveConnected] = useState(false);
   const [dockOpen, setDockOpen] = useState(true);
   const lastManualChangeRef = useRef(0);
@@ -1277,6 +1350,7 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
         const inGracePeriod = Date.now() - lastManualChangeRef.current < MANUAL_GRACE_MS;
         if (inGracePeriod) return;
 
+        let sawRoomTemp = false, sawCooling = false;
         rows.forEach((row) => {
           const device = row.cra04_device;
           const rawState = String(row.cra04_state ?? '').trim();
@@ -1309,6 +1383,15 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
             setLightBrightness(Math.max(0, Math.min(100, value)));
           } else if (device === 'Temperature') {
             if (!Number.isNaN(numeric)) setTemperature(Math.max(16, Math.min(28, numeric)));
+          } else if (device === 'Room Temperature') {
+            if (!Number.isNaN(numeric)) {
+              sawRoomTemp = true;
+              setReportedRoomTemp(Math.max(10, Math.min(35, numeric)));
+            }
+          } else if (device === 'Cooling') {
+            sawCooling = true;
+            const next = parseCooling(rawState);
+            setCooling((prev) => (prev.mode === next.mode && prev.code === next.code && prev.detail === next.detail ? prev : next));
           } else if (device === 'Air Quality') {
             if (!Number.isNaN(numeric)) {
               setAirQuality(Math.max(400, Math.min(2400, numeric)));
@@ -1323,9 +1406,14 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
             setScreenOn(lower === 'on');
           }
         });
+        // Rows removed in Dataverse: back to normal behaviour.
+        if (!sawRoomTemp) setReportedRoomTemp(null);
+        if (!sawCooling) setCooling((prev) => (prev.mode === 'running' && !prev.code ? prev : parseCooling('')));
       } catch (err) {
         console.error('Room state poll failed:', err);
         if (!cancelled) setLiveConnected(false);
+      } finally {
+        if (!cancelled) setFirstPollDone(true);
       }
     }
 
@@ -1628,7 +1716,7 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
 
     const thermoDisplay = new THREE.Mesh(
       new THREE.CircleGeometry(0.1, 32),
-      new THREE.MeshStandardMaterial({ map: makeReadoutTexture(21), roughness: 0.4 })
+      new THREE.MeshStandardMaterial({ map: makeReadoutTexture(21, 21), roughness: 0.4 })
     );
     thermoDisplay.position.set(-2.5, 1.5, -roomD / 2 + 0.05);
     scene.add(thermoDisplay);
@@ -1657,12 +1745,106 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
     airQualityGlow.position.set(-2.5, 1.1, -roomD / 2 + 0.2);
     scene.add(airQualityGlow);
 
+    // Four-way ceiling cassette in the middle of the ceiling, the usual office unit:
+    // a square panel with a slot and louvre on each side, a central intake grille,
+    // a status LED, and a glow beneath it that turns red on a fault.
+    const ceilY = roomH;
+    const cassetteSize = 0.7, slotLen = 0.46, slotOffset = 0.25;
+    const cassette = new THREE.Mesh(
+      new THREE.BoxGeometry(cassetteSize, 0.05, cassetteSize),
+      new THREE.MeshStandardMaterial({ color: 0xF2F4F7, roughness: 0.5 })
+    );
+    cassette.position.set(0, ceilY - 0.025, 0);
+    scene.add(cassette);
+    const intake = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.3, 0.3),
+      new THREE.MeshStandardMaterial({ map: makeCanvasTexture((ctx, sz) => {
+        ctx.fillStyle = '#C9D0D9';
+        ctx.fillRect(0, 0, sz, sz);
+        ctx.strokeStyle = '#8E98A6';
+        ctx.lineWidth = 3;
+        for (let i = 12; i < sz; i += 16) {
+          ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, sz); ctx.stroke();
+        }
+      }, 128, 1, 1), roughness: 0.7 })
+    );
+    intake.rotation.x = Math.PI / 2;
+    intake.position.set(0, ceilY - 0.051, 0);
+    scene.add(intake);
+    // One slot and louvre per side; each louvre hinges on its inner edge.
+    const slotMat = new THREE.MeshStandardMaterial({ color: 0x2A3442, roughness: 0.8, side: THREE.DoubleSide });
+    const louvreMat = new THREE.MeshStandardMaterial({ color: 0xD5DAE0, roughness: 0.5 });
+    const acLouvres = [0, Math.PI / 2, Math.PI, -Math.PI / 2].map((rot) => {
+      const side = new THREE.Group();
+      side.rotation.y = rot;
+      side.position.set(0, ceilY - 0.052, 0);
+      scene.add(side);
+      const slot = new THREE.Mesh(new THREE.PlaneGeometry(slotLen, 0.06), slotMat);
+      slot.rotation.x = Math.PI / 2;
+      slot.position.set(0, 0, slotOffset);
+      side.add(slot);
+      const louvreGeo = new THREE.BoxGeometry(slotLen, 0.01, 0.07);
+      louvreGeo.translate(0, 0, 0.035);
+      const louvre = new THREE.Mesh(louvreGeo, louvreMat);
+      louvre.position.set(0, -0.004, slotOffset - 0.035);
+      side.add(louvre);
+      return louvre;
+    });
+    const acLed = new THREE.Mesh(
+      new THREE.CircleGeometry(0.02, 16),
+      new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0x00D4E8, emissiveIntensity: 1, side: THREE.DoubleSide })
+    );
+    acLed.rotation.x = Math.PI / 2;
+    acLed.position.set(0.29, ceilY - 0.052, 0.29);
+    scene.add(acLed);
+    const acLedGlow = new THREE.PointLight(0x00D4E8, 0.4, 2.2, 2);
+    acLedGlow.position.set(0, ceilY - 0.25, 0);
+    scene.add(acLedGlow);
+
+    const AIR_COUNT = 260, AIR_LIFE = 2.6;
+    const airPositions = new Float32Array(AIR_COUNT * 3);
+    const airAlphas = new Float32Array(AIR_COUNT);
+    const airParticles = Array.from({ length: AIR_COUNT }, () => ({ age: Math.random() * AIR_LIFE, live: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 }));
+    const airGeo = new THREE.BufferGeometry();
+    airGeo.setAttribute('position', new THREE.BufferAttribute(airPositions, 3));
+    airGeo.setAttribute('alpha', new THREE.BufferAttribute(airAlphas, 1));
+    // Soft round points with their own fade, drawn in a saturated tint so they show on light walls.
+    const airMaterial = new THREE.ShaderMaterial({
+      uniforms: { color: { value: new THREE.Color(0x3E9BFF) }, size: { value: 70 } },
+      vertexShader: `
+        attribute float alpha;
+        varying float vAlpha;
+        uniform float size;
+        void main() {
+          vAlpha = alpha;
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = size / -mv.z;
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `
+        uniform vec3 color;
+        varying float vAlpha;
+        void main() {
+          float d = length(gl_PointCoord - vec2(0.5));
+          if (d > 0.5) discard;
+          gl_FragColor = vec4(color, vAlpha * smoothstep(0.5, 0.1, d));
+        }`,
+      transparent: true,
+      depthWrite: false,
+    });
+    const airPoints = new THREE.Points(airGeo, airMaterial);
+    airPoints.frustumCulled = false;
+    scene.add(airPoints);
+
     sceneObjectsRef.current = {
+      acLouvres, acLed, acLedGlow, airPoints, airParticles, airPositions, airAlphas, airLife: AIR_LIFE,
+      roomTemp: null, reportedRoomTemp: null, cooling: parseCooling(''), lastShownRoomTemp: null,
+      lastReadoutKey: '', lastFrameTime: performance.now() / 1000,
       blindsMeshes, glassMat, ambient, daylight, ceilingLights, screens, videoBarLed, touchPanel,
       screenOn: false, screenPhase: 'off', screenPhaseStart: 0, lastScreenDraw: 0,
       thermoRing, thermoDisplay, thermoGlow,
       airQualityRing, airQualityDisplay, airQualityGlow,
-      currentTemp: 21, targetTemp: 21, lastDisplayedTemp: 21,
+      currentTemp: 21, targetTemp: 21,
       currentAirQuality: 600, targetAirQuality: 600, lastDisplayedAirQuality: 600,
       currentBlindPosition: 0, targetBlindPosition: 0,
       renderer, scene, camera,
@@ -1670,6 +1852,11 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
 
     const coldColor = new THREE.Color(0x378ADD);
     const warmColor = new THREE.Color(0xD85A30);
+    const faultColor = new THREE.Color(0xE2574C);
+    const coolAirColor = new THREE.Color(0x3E9BFF);
+    const warmAirColor = new THREE.Color(0xFF8A3D);
+    const neutralLight = new THREE.Color(0xFFFFFF);
+    const hotLight = new THREE.Color(0xFFD9B8);
 
     const goodAirColor = new THREE.Color(0x3FA86B);
     const midAirColor = new THREE.Color(0xE0A930);
@@ -1698,17 +1885,114 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
       camera.lookAt(0, 1.0, 0);
 
       const objs = sceneObjectsRef.current;
-      objs.currentTemp += (objs.targetTemp - objs.currentTemp) * 0.02;
-      const t = Math.max(0, Math.min(1, (objs.currentTemp - 16) / (28 - 16)));
+      const nowSec = performance.now() / 1000;
+      const dt = Math.min(0.5, nowSec - objs.lastFrameTime); // capped so a tab coming back from the background doesn't jump
+      objs.lastFrameTime = nowSec;
+
+      // Set point eases as before (it drives the slider colour on the ring when the room is at it).
+      objs.currentTemp += (objs.targetTemp - objs.currentTemp) * 0.05;
+
+      // Simulated room temperature.
+      const setPoint = objs.targetTemp;
+      if (objs.roomTemp === null) objs.roomTemp = objs.reportedRoomTemp ?? setPoint;
+      const working = objs.cooling.mode === 'running';
+      let goal, rate;
+      if (working) { goal = setPoint; rate = HVAC.COOL_RATE; }
+      else if (objs.reportedRoomTemp !== null) { goal = objs.reportedRoomTemp; rate = HVAC.COOL_RATE; }
+      else { goal = Math.min(35, setPoint + HVAC.HEAT_LOAD); rate = HVAC.DRIFT_RATE; }
+      const step = rate * dt;
+      const diff = goal - objs.roomTemp;
+      objs.roomTemp = Math.abs(diff) <= step ? goal : objs.roomTemp + Math.sign(diff) * step;
+
+      const gap = objs.roomTemp - setPoint; // positive: warmer than set
+      const fault = objs.cooling.mode === 'fault';
+      // Airflow: strong while closing a gap, a gentle trickle at the set point, none if not working.
+      const flow = working ? Math.max(0.12, Math.min(1, Math.abs(gap) / 1.5)) : 0;
+
+      // Thermostat ring: colour follows the room temperature; flashes red on a fault.
+      const t = Math.max(0, Math.min(1, (objs.roomTemp - 16) / (28 - 16)));
       const mixed = coldColor.clone().lerp(warmColor, t);
+      if (fault) {
+        const pulse = 0.5 + 0.5 * Math.sin(nowSec * 6);
+        mixed.lerp(faultColor, 0.55 + 0.45 * pulse);
+        objs.thermoRing.material.emissiveIntensity = 0.4 + 0.8 * pulse;
+        objs.thermoGlow.intensity = 0.6 + 1.2 * pulse;
+      } else {
+        objs.thermoRing.material.emissiveIntensity = 0.4;
+        objs.thermoGlow.intensity = 0.6;
+      }
       objs.thermoRing.material.color.copy(mixed);
       objs.thermoRing.material.emissive.copy(mixed);
       objs.thermoGlow.color.copy(mixed);
 
-      if (Math.round(objs.currentTemp) !== Math.round(objs.lastDisplayedTemp)) {
-        objs.lastDisplayedTemp = objs.currentTemp;
-        setMap(objs.thermoDisplay.material, makeReadoutTexture(objs.currentTemp));
+      const readoutKey = `${objs.roomTemp.toFixed(1)}|${Math.round(setPoint)}|${fault ? objs.cooling.code || 'F' : ''}`;
+      if (readoutKey !== objs.lastReadoutKey) {
+        objs.lastReadoutKey = readoutKey;
+        setMap(objs.thermoDisplay.material, makeReadoutTexture(objs.roomTemp, setPoint, fault ? objs.cooling : null));
       }
+      // The chip and dock show tenths; only update React when the shown value changes.
+      const shown = Math.round(objs.roomTemp * 10) / 10;
+      if (shown !== objs.lastShownRoomTemp) {
+        objs.lastShownRoomTemp = shown;
+        setRoomTemp(shown);
+      }
+
+      // Air conditioning unit: louvre, status LED.
+      const louvreTarget = working ? 0.7 : 0;
+      objs.acLouvres.forEach((l) => { l.rotation.x += (louvreTarget - l.rotation.x) * Math.min(1, dt * 3); });
+      if (fault) {
+        const on = Math.sin(nowSec * 7) > 0;
+        objs.acLed.material.emissive.setHex(on ? 0xE2574C : 0x000000);
+        objs.acLedGlow.color.setHex(0xE2574C);
+        objs.acLedGlow.intensity = on ? 2.2 : 0.3;
+      } else if (working) {
+        objs.acLed.material.emissive.setHex(0x00D4E8);
+        objs.acLedGlow.color.setHex(0x00D4E8);
+        objs.acLedGlow.intensity = 0.25;
+      } else {
+        objs.acLed.material.emissive.setHex(0x000000);
+        objs.acLedGlow.intensity = 0;
+      }
+
+      // Airflow particles: cool blue when cooling, warm amber when heating to the set point.
+      const airTint = gap >= 0 ? coolAirColor : warmAirColor;
+      const pos = objs.airPositions, alphas = objs.airAlphas;
+      objs.airPoints.material.uniforms.color.value.copy(airTint);
+      objs.airParticles.forEach((p, i) => {
+        p.age += dt;
+        if (p.age >= objs.airLife) {
+          p.age = Math.random() * 0.2;
+          p.live = Math.random() < flow;
+          // Pick a side, start along its slot, and blow outward from the cassette.
+          const sideIndex = Math.floor(Math.random() * 4);
+          const along = (Math.random() - 0.5) * slotLen;
+          const dirX = [0, 1, 0, -1][sideIndex], dirZ = [1, 0, -1, 0][sideIndex];
+          const speed = 0.7 + Math.random() * 0.4;
+          p.x = dirX * slotOffset + dirZ * along;
+          p.z = dirZ * slotOffset + dirX * along;
+          p.y = ceilY - 0.08;
+          p.vx = dirX * speed + dirZ * (Math.random() - 0.5) * 0.15;
+          p.vz = dirZ * speed + dirX * (Math.random() - 0.5) * 0.15;
+          p.vy = -0.12 - Math.random() * 0.12;
+        }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.z += p.vz * dt;
+        p.vy -= 0.18 * dt; // cool air sinks as it slows
+        p.vx *= 1 - 0.4 * dt;
+        p.vz *= 1 - 0.4 * dt;
+        pos[i * 3] = p.x;
+        pos[i * 3 + 1] = Math.max(0.05, p.y);
+        pos[i * 3 + 2] = p.z;
+        const life = p.age / objs.airLife;
+        alphas[i] = p.live ? Math.sin(Math.PI * Math.min(1, life)) * 0.6 : 0;
+      });
+      objs.airPoints.geometry.attributes.position.needsUpdate = true;
+      objs.airPoints.geometry.attributes.alpha.needsUpdate = true;
+
+      // A hot room reads slightly warmer in tone.
+      const heat = Math.max(0, Math.min(1, (objs.roomTemp - 23) / 5));
+      objs.ambient.color.copy(neutralLight).lerp(hotLight, heat * 0.7);
 
       // Air quality: green (400ppm) -> amber (1200ppm) -> red (2000ppm+)
       objs.currentAirQuality += (objs.targetAirQuality - objs.currentAirQuality) * 0.02;
@@ -1837,6 +2121,49 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
     }
   }, [airQuality]);
 
+  // First reported value seeds the simulated room (so a fault shows a hot room at once);
+  // later values are only targets, so the room moves to them rather than jumping.
+  useEffect(() => {
+    const objs = sceneObjectsRef.current;
+    if (!objs || !('roomTemp' in objs)) return;
+    if (reportedRoomTemp !== null && objs.reportedRoomTemp === null && !objs.seededFromReport) {
+      objs.roomTemp = reportedRoomTemp;
+      objs.seededFromReport = true;
+    }
+    objs.reportedRoomTemp = reportedRoomTemp;
+  }, [reportedRoomTemp, room]);
+
+  useEffect(() => {
+    if (sceneObjectsRef.current) sceneObjectsRef.current.cooling = cooling;
+  }, [cooling, room]);
+
+  // A room with no Room Temperature row starts at its set point, not at the default.
+  useEffect(() => {
+    const objs = sceneObjectsRef.current;
+    if (firstPollDone && objs && 'roomTemp' in objs && !objs.seededFromReport && reportedRoomTemp === null) {
+      objs.roomTemp = objs.targetTemp;
+      objs.seededFromReport = true;
+    }
+  }, [firstPollDone]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Status for the chip and the temperature tile.
+  const gapNow = roomTemp === null ? 0 : roomTemp - temperature;
+  let hvacTone, hvacText;
+  if (cooling.mode === 'fault') {
+    hvacTone = 'fault';
+    hvacText = `Cooling fault${cooling.code ? ` ${cooling.code}` : ''}${cooling.detail ? `: ${cooling.detail}` : ''}`;
+  } else if (cooling.mode === 'off') {
+    hvacTone = '';
+    hvacText = 'Air conditioning off';
+  } else if (Math.abs(gapNow) <= HVAC.AT_SETPOINT) {
+    hvacTone = 'ok';
+    hvacText = 'At set point';
+  } else {
+    hvacTone = gapNow > 0 ? 'cool' : 'heat';
+    hvacText = `${gapNow > 0 ? 'Cooling' : 'Heating'} to ${temperature}°C`;
+  }
+  const roomTempText = roomTemp === null ? '' : `${roomTemp.toFixed(1)}°C`;
+
   return (
     <div className="rm-shell">
       <style>{STYLES}</style>
@@ -1894,6 +2221,13 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
       <main className="rm-stage">
         <div className="rm-canvas" ref={mountRef} />
 
+        {firstPollDone && (
+          <div className={`rm-hvac${hvacTone ? ` ${hvacTone}` : ''}`} role="status" aria-live="polite">
+            <i />
+            <span>{roomTempText && `Room ${roomTempText} · `}{hvacText}</span>
+          </div>
+        )}
+
         <section className={`rm-dock${dockOpen ? '' : ' closed'}`} aria-label="Room controls" aria-hidden={!dockOpen}>
           <div className="rm-grid">
             <SliderTile
@@ -1910,7 +2244,9 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
             />
             <SliderTile
               id="rm-temp" icon={ICONS.temp} label="Temperature" track={TRACKS.temp}
-              valueText={`${temperature}°C`}
+              valueText={`Set ${temperature}°C`}
+              note={roomTempText ? `Room ${roomTempText}${cooling.mode === 'fault' ? ' · fault' : ''}` : ''}
+              noteTone={cooling.mode === 'fault' ? 'fault' : hvacTone === 'cool' || hvacTone === 'heat' ? hvacTone : ''}
               min={16} max={28} step={1} value={temperature}
               onChange={(e) => { markManualChange(); setTemperature(Number(e.target.value)); }}
             />
