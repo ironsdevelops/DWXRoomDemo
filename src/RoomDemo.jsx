@@ -1838,8 +1838,8 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
         void main() {
           float across = smoothstep(0.0, 0.4, vUv.y) * (1.0 - smoothstep(0.6, 1.0, vUv.y));
           float along = smoothstep(0.0, 0.06, vUv.x) * (1.0 - smoothstep(0.5, 1.0, vUv.x));
-          float wave = 0.5 + 0.5 * sin((vUv.x * 3.0 - time * speed + vPhase) * 6.2832);
-          float shimmer = 0.35 + 0.65 * wave * wave;
+          float wave = 0.5 + 0.5 * sin((vUv.x * 2.0 - time + vPhase) * 6.2832);
+          float shimmer = 0.55 + 0.45 * wave;
           gl_FragColor = vec4(color, intensity * 0.5 * across * along * shimmer);
         }`,
       transparent: true,
@@ -1911,7 +1911,7 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
         vec3 ramp(float x) {
           vec3 c0 = vec3(0.24, 0.61, 1.0);   // cool blue
           vec3 c1 = vec3(0.25, 0.82, 0.77);  // comfortable teal
-          vec3 c2 = vec3(1.0, 0.62, 0.25);   // warm amber
+          vec3 c2 = vec3(1.0, 0.48, 0.28);   // warm orange-red
           vec3 c3 = vec3(0.89, 0.30, 0.26);  // hot red
           if (x < 0.35) return mix(c0, c1, x / 0.35);
           if (x < 0.65) return mix(c1, c2, (x - 0.35) / 0.3);
@@ -1934,7 +1934,7 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
     scene.add(thermalFloor);
 
     sceneObjectsRef.current = {
-      acLouvres, acLed, acLedGlow, ribbonMaterial, thermalMaterial, ribbonIntensity: 0, thermalCore: 0,
+      acLouvres, acLed, acLedGlow, ribbonMaterial, thermalMaterial, ribbonIntensity: 0, ribbonFlow: 0, thermalCore: 0,
       roomTemp: null, reportedRoomTemp: null, cooling: parseCooling(''), lastShownRoomTemp: null,
       lastReadoutKey: '', lastFrameTime: performance.now() / 1000,
       blindsMeshes, glassMat, ambient, daylight, ceilingLights, screens, videoBarLed, touchPanel,
@@ -1951,7 +1951,7 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
     const warmColor = new THREE.Color(0xD85A30);
     const faultColor = new THREE.Color(0xE2574C);
     const coolAirColor = new THREE.Color(0x3E9BFF);
-    const warmAirColor = new THREE.Color(0xFF8A3D);
+    const warmAirColor = new THREE.Color(0xF0463A);
     const neutralLight = new THREE.Color(0xFFFFFF);
     const hotLight = new THREE.Color(0xFFD9B8);
 
@@ -2051,14 +2051,15 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
         objs.acLedGlow.intensity = 0;
       }
 
-      // Airflow ribbons: blue when cooling, amber when heating; stronger and
+      // Airflow ribbons: blue when cooling, red when heating; stronger and
       // faster while closing a gap; they fade away on a fault or when off.
       const airTint = gap >= 0 ? coolAirColor : warmAirColor;
       objs.ribbonMaterial.uniforms.color.value.copy(airTint);
       objs.ribbonIntensity += (flow - objs.ribbonIntensity) * Math.min(1, dt * 2);
       objs.ribbonMaterial.uniforms.intensity.value = objs.ribbonIntensity;
-      objs.ribbonMaterial.uniforms.speed.value = 0.25 + 0.6 * objs.ribbonIntensity;
-      objs.ribbonMaterial.uniforms.time.value = nowSec;
+      // Accumulate the flow offset so a change of speed never runs the pattern backwards.
+      objs.ribbonFlow += dt * (0.12 + 0.28 * objs.ribbonIntensity);
+      objs.ribbonMaterial.uniforms.time.value = objs.ribbonFlow % 1000;
 
       // Thermal floor: overall heat from the room temperature, with a cool
       // (or warm, when heating) patch spreading from under the cassette.
@@ -2066,10 +2067,10 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
       const coreTarget = working ? (gap >= 0 ? -1 : 1) * 0.55 * flow : 0;
       objs.thermalCore += (coreTarget - objs.thermalCore) * Math.min(1, dt * 1.5);
       const deviation = Math.min(1, Math.abs(objs.roomTemp - setPoint) / 4);
-      const faultPulse = fault ? 0.08 * (0.5 + 0.5 * Math.sin(nowSec * 3)) : 0;
+      const faultPulse = fault ? 0.05 * (0.5 + 0.5 * Math.sin(nowSec * 3)) : 0;
       objs.thermalMaterial.uniforms.heat.value = heatLevel;
       objs.thermalMaterial.uniforms.core.value = objs.thermalCore;
-      objs.thermalMaterial.uniforms.opacity.value = 0.08 + 0.36 * Math.max(deviation, fault ? 1 : 0) + faultPulse;
+      objs.thermalMaterial.uniforms.opacity.value = 0.05 + 0.24 * Math.max(deviation, fault ? 1 : 0) + faultPulse;
 
       // A hot room reads slightly warmer in tone.
       const heat = Math.max(0, Math.min(1, (objs.roomTemp - 23) / 5));
