@@ -54,6 +54,13 @@ const FALLBACK_ROOM = {
 //     Temperature, or drifts up by HEAT_LOAD at DRIFT_RATE if none is reported.
 // The first poll seeds the room from Room Temperature, so a fault set in
 // Dataverse shows as a hot room straight away.
+// Which air conditioning visuals to show: ?hvac=ribbons, ?hvac=thermal, or both (default).
+const HVAC_STYLE = (() => {
+  try { return new URLSearchParams(window.location.search).get('hvac') || 'both'; } catch { return 'both'; }
+})();
+const SHOW_RIBBONS = HVAC_STYLE === 'both' || HVAC_STYLE === 'ribbons';
+const SHOW_THERMAL = HVAC_STYLE === 'both' || HVAC_STYLE === 'thermal';
+
 const HVAC = {
   COOL_RATE: 0.5,   // degrees C per second while the unit is working (27.5 to 21 in about 13 s)
   DRIFT_RATE: 0.08, // degrees C per second when there's no cooling and no reported value
@@ -1801,43 +1808,133 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
     acLedGlow.position.set(0, ceilY - 0.25, 0);
     scene.add(acLedGlow);
 
-    const AIR_COUNT = 260, AIR_LIFE = 2.6;
-    const airPositions = new Float32Array(AIR_COUNT * 3);
-    const airAlphas = new Float32Array(AIR_COUNT);
-    const airParticles = Array.from({ length: AIR_COUNT }, () => ({ age: Math.random() * AIR_LIFE, live: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 }));
-    const airGeo = new THREE.BufferGeometry();
-    airGeo.setAttribute('position', new THREE.BufferAttribute(airPositions, 3));
-    airGeo.setAttribute('alpha', new THREE.BufferAttribute(airAlphas, 1));
-    // Soft round points with their own fade, drawn in a saturated tint so they show on light walls.
-    const airMaterial = new THREE.ShaderMaterial({
-      uniforms: { color: { value: new THREE.Color(0x3E9BFF) }, size: { value: 70 } },
+    // Airflow ribbons: soft bands that leave each side of the cassette, run
+    // along the ceiling and roll down into the room, with a slow shimmer
+    // moving along them. One shared material, so colour and strength are
+    // set once per frame.
+    const ribbonMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        color: { value: new THREE.Color(0x3E9BFF) },
+        time: { value: 0 },
+        intensity: { value: 0 },
+        speed: { value: 1 },
+      },
       vertexShader: `
-        attribute float alpha;
-        varying float vAlpha;
-        uniform float size;
+        attribute float phase;
+        varying vec2 vUv;
+        varying float vPhase;
         void main() {
-          vAlpha = alpha;
-          vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          gl_PointSize = size / -mv.z;
-          gl_Position = projectionMatrix * mv;
+          vUv = uv;
+          vPhase = phase;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }`,
       fragmentShader: `
         uniform vec3 color;
-        varying float vAlpha;
+        uniform float time;
+        uniform float intensity;
+        uniform float speed;
+        varying vec2 vUv;
+        varying float vPhase;
         void main() {
-          float d = length(gl_PointCoord - vec2(0.5));
-          if (d > 0.5) discard;
-          gl_FragColor = vec4(color, vAlpha * smoothstep(0.5, 0.1, d));
+          float across = smoothstep(0.0, 0.4, vUv.y) * (1.0 - smoothstep(0.6, 1.0, vUv.y));
+          float along = smoothstep(0.0, 0.06, vUv.x) * (1.0 - smoothstep(0.5, 1.0, vUv.x));
+          float wave = 0.5 + 0.5 * sin((vUv.x * 3.0 - time * speed + vPhase) * 6.2832);
+          float shimmer = 0.35 + 0.65 * wave * wave;
+          gl_FragColor = vec4(color, intensity * 0.5 * across * along * shimmer);
+        }`,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const ribbons = new THREE.Group();
+    ribbons.visible = SHOW_RIBBONS;
+    scene.add(ribbons);
+    const RIBBON_STEPS = 48;
+    [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dz], sideIdx) => {
+      const dir = new THREE.Vector3(dx, 0, dz);
+      const lat = new THREE.Vector3(Math.abs(dz), 0, Math.abs(dx));
+      [-0.16, 0, 0.16].forEach((o, k) => {
+        const at = (along, latScale, y) => dir.clone().multiplyScalar(along).add(lat.clone().multiplyScalar(o * latScale)).setY(y);
+        const curve = new THREE.CatmullRomCurve3([
+          at(0.3, 1, ceilY - 0.07),
+          at(0.95, 1.6, ceilY - 0.13),
+          at(1.5, 2.3, ceilY - 0.5),
+          at(1.85, 2.9, 1.35),
+        ]);
+        const positions = [], uvs = [], phases = [], index = [];
+        for (let i = 0; i <= RIBBON_STEPS; i++) {
+          const t = i / RIBBON_STEPS;
+          const p = curve.getPoint(t);
+          const w = 0.07 + 0.3 * t;
+          const a1 = p.clone().addScaledVector(lat, -w / 2);
+          const a2 = p.clone().addScaledVector(lat, w / 2);
+          positions.push(a1.x, a1.y, a1.z, a2.x, a2.y, a2.z);
+          uvs.push(t, 0, t, 1);
+          const ph = (sideIdx * 3 + k) * 0.37;
+          phases.push(ph, ph);
+          if (i < RIBBON_STEPS) {
+            const v = i * 2;
+            index.push(v, v + 1, v + 2, v + 1, v + 3, v + 2);
+          }
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+        g.setAttribute('phase', new THREE.Float32BufferAttribute(phases, 1));
+        g.setIndex(index);
+        const mesh = new THREE.Mesh(g, ribbonMaterial);
+        mesh.frustumCulled = false;
+        ribbons.add(mesh);
+      });
+    });
+
+    // Thermal floor: a heat-map tint over the floor, warm when the room is
+    // hot, cooling outward from under the cassette while the unit works.
+    const thermalMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        heat: { value: 0.2 },
+        core: { value: 0 },
+        opacity: { value: 0 },
+      },
+      vertexShader: `
+        varying vec2 vXZ;
+        void main() {
+          vec4 w = modelMatrix * vec4(position, 1.0);
+          vXZ = w.xz;
+          gl_Position = projectionMatrix * viewMatrix * w;
+        }`,
+      fragmentShader: `
+        uniform float heat;
+        uniform float core;
+        uniform float opacity;
+        varying vec2 vXZ;
+        vec3 ramp(float x) {
+          vec3 c0 = vec3(0.24, 0.61, 1.0);   // cool blue
+          vec3 c1 = vec3(0.25, 0.82, 0.77);  // comfortable teal
+          vec3 c2 = vec3(1.0, 0.62, 0.25);   // warm amber
+          vec3 c3 = vec3(0.89, 0.30, 0.26);  // hot red
+          if (x < 0.35) return mix(c0, c1, x / 0.35);
+          if (x < 0.65) return mix(c1, c2, (x - 0.35) / 0.3);
+          return mix(c2, c3, (x - 0.65) / 0.35);
+        }
+        void main() {
+          float d = clamp(length(vXZ) / 3.0, 0.0, 1.0);
+          float local = clamp(heat + core * (1.0 - smoothstep(0.0, 1.0, d)), 0.0, 1.0);
+          float edge = 1.0 - smoothstep(0.75, 1.0, max(abs(vXZ.x) / 3.0, abs(vXZ.y) / 2.5));
+          gl_FragColor = vec4(ramp(local), opacity * (0.6 + 0.4 * (1.0 - d)) * (0.4 + 0.6 * edge));
         }`,
       transparent: true,
       depthWrite: false,
     });
-    const airPoints = new THREE.Points(airGeo, airMaterial);
-    airPoints.frustumCulled = false;
-    scene.add(airPoints);
+    const thermalFloor = new THREE.Mesh(new THREE.PlaneGeometry(roomW - 0.02, roomD - 0.02), thermalMaterial);
+    thermalFloor.rotation.x = -Math.PI / 2;
+    thermalFloor.position.y = 0.02;
+    thermalFloor.renderOrder = 1;
+    thermalFloor.visible = SHOW_THERMAL;
+    scene.add(thermalFloor);
 
     sceneObjectsRef.current = {
-      acLouvres, acLed, acLedGlow, airPoints, airParticles, airPositions, airAlphas, airLife: AIR_LIFE,
+      acLouvres, acLed, acLedGlow, ribbonMaterial, thermalMaterial, ribbonIntensity: 0, thermalCore: 0,
       roomTemp: null, reportedRoomTemp: null, cooling: parseCooling(''), lastShownRoomTemp: null,
       lastReadoutKey: '', lastFrameTime: performance.now() / 1000,
       blindsMeshes, glassMat, ambient, daylight, ceilingLights, screens, videoBarLed, touchPanel,
@@ -1954,41 +2051,25 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
         objs.acLedGlow.intensity = 0;
       }
 
-      // Airflow particles: cool blue when cooling, warm amber when heating to the set point.
+      // Airflow ribbons: blue when cooling, amber when heating; stronger and
+      // faster while closing a gap; they fade away on a fault or when off.
       const airTint = gap >= 0 ? coolAirColor : warmAirColor;
-      const pos = objs.airPositions, alphas = objs.airAlphas;
-      objs.airPoints.material.uniforms.color.value.copy(airTint);
-      objs.airParticles.forEach((p, i) => {
-        p.age += dt;
-        if (p.age >= objs.airLife) {
-          p.age = Math.random() * 0.2;
-          p.live = Math.random() < flow;
-          // Pick a side, start along its slot, and blow outward from the cassette.
-          const sideIndex = Math.floor(Math.random() * 4);
-          const along = (Math.random() - 0.5) * slotLen;
-          const dirX = [0, 1, 0, -1][sideIndex], dirZ = [1, 0, -1, 0][sideIndex];
-          const speed = 0.7 + Math.random() * 0.4;
-          p.x = dirX * slotOffset + dirZ * along;
-          p.z = dirZ * slotOffset + dirX * along;
-          p.y = ceilY - 0.08;
-          p.vx = dirX * speed + dirZ * (Math.random() - 0.5) * 0.15;
-          p.vz = dirZ * speed + dirX * (Math.random() - 0.5) * 0.15;
-          p.vy = -0.12 - Math.random() * 0.12;
-        }
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-        p.z += p.vz * dt;
-        p.vy -= 0.18 * dt; // cool air sinks as it slows
-        p.vx *= 1 - 0.4 * dt;
-        p.vz *= 1 - 0.4 * dt;
-        pos[i * 3] = p.x;
-        pos[i * 3 + 1] = Math.max(0.05, p.y);
-        pos[i * 3 + 2] = p.z;
-        const life = p.age / objs.airLife;
-        alphas[i] = p.live ? Math.sin(Math.PI * Math.min(1, life)) * 0.6 : 0;
-      });
-      objs.airPoints.geometry.attributes.position.needsUpdate = true;
-      objs.airPoints.geometry.attributes.alpha.needsUpdate = true;
+      objs.ribbonMaterial.uniforms.color.value.copy(airTint);
+      objs.ribbonIntensity += (flow - objs.ribbonIntensity) * Math.min(1, dt * 2);
+      objs.ribbonMaterial.uniforms.intensity.value = objs.ribbonIntensity;
+      objs.ribbonMaterial.uniforms.speed.value = 0.25 + 0.6 * objs.ribbonIntensity;
+      objs.ribbonMaterial.uniforms.time.value = nowSec;
+
+      // Thermal floor: overall heat from the room temperature, with a cool
+      // (or warm, when heating) patch spreading from under the cassette.
+      const heatLevel = Math.max(0, Math.min(1, (objs.roomTemp - 19.5) / 8));
+      const coreTarget = working ? (gap >= 0 ? -1 : 1) * 0.55 * flow : 0;
+      objs.thermalCore += (coreTarget - objs.thermalCore) * Math.min(1, dt * 1.5);
+      const deviation = Math.min(1, Math.abs(objs.roomTemp - setPoint) / 4);
+      const faultPulse = fault ? 0.08 * (0.5 + 0.5 * Math.sin(nowSec * 3)) : 0;
+      objs.thermalMaterial.uniforms.heat.value = heatLevel;
+      objs.thermalMaterial.uniforms.core.value = objs.thermalCore;
+      objs.thermalMaterial.uniforms.opacity.value = 0.08 + 0.36 * Math.max(deviation, fault ? 1 : 0) + faultPulse;
 
       // A hot room reads slightly warmer in tone.
       const heat = Math.max(0, Math.min(1, (objs.roomTemp - 23) / 5));
