@@ -1752,60 +1752,72 @@ export default function RoomDemo({ room = FALLBACK_ROOM }) {
     airQualityGlow.position.set(-2.5, 1.1, -roomD / 2 + 0.2);
     scene.add(airQualityGlow);
 
-    // Four-way ceiling cassette in the middle of the ceiling, the usual office unit:
-    // a square panel with a slot and louvre on each side, a central intake grille,
-    // a status LED, and a glow beneath it that turns red on a fault.
+    // Four-way ceiling cassette in the middle of the ceiling, the usual office unit,
+    // drawn as a slim flush panel: rounded edges, a fine slot and louvre on each
+    // side, a central intake grille, a status LED, and a glow beneath it that
+    // turns red on a fault.
     const ceilY = roomH;
-    const cassetteSize = 0.7, slotLen = 0.46, slotOffset = 0.25;
-    const cassette = new THREE.Mesh(
-      new THREE.BoxGeometry(cassetteSize, 0.05, cassetteSize),
-      new THREE.MeshStandardMaterial({ color: 0xF2F4F7, roughness: 0.5 })
-    );
-    cassette.position.set(0, ceilY - 0.025, 0);
+    const cassetteSize = 0.6, panelT = 0.014, slotLen = 0.4, slotOffset = 0.215;
+    const panelShape = (() => {
+      const h = cassetteSize / 2, r = 0.05, sh = new THREE.Shape();
+      sh.moveTo(-h + r, -h);
+      sh.lineTo(h - r, -h); sh.quadraticCurveTo(h, -h, h, -h + r);
+      sh.lineTo(h, h - r); sh.quadraticCurveTo(h, h, h - r, h);
+      sh.lineTo(-h + r, h); sh.quadraticCurveTo(-h, h, -h, h - r);
+      sh.lineTo(-h, -h + r); sh.quadraticCurveTo(-h, -h, -h + r, -h);
+      return sh;
+    })();
+    const panelGeo = new THREE.ExtrudeGeometry(panelShape, {
+      depth: panelT - 0.006, bevelEnabled: true, bevelThickness: 0.003, bevelSize: 0.004, bevelSegments: 3, curveSegments: 8,
+    });
+    panelGeo.rotateX(Math.PI / 2);
+    const cassette = new THREE.Mesh(panelGeo, new THREE.MeshStandardMaterial({ color: 0xF4F6F9, roughness: 0.4, metalness: 0.05 }));
+    cassette.position.set(0, ceilY - 0.003, 0);
     scene.add(cassette);
+    const underY = ceilY - panelT - 0.001;
     const intake = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.3, 0.3),
+      new THREE.PlaneGeometry(0.26, 0.26),
       new THREE.MeshStandardMaterial({ map: makeCanvasTexture((ctx, sz) => {
-        ctx.fillStyle = '#C9D0D9';
+        ctx.fillStyle = '#E3E7EC';
         ctx.fillRect(0, 0, sz, sz);
-        ctx.strokeStyle = '#8E98A6';
-        ctx.lineWidth = 3;
-        for (let i = 12; i < sz; i += 16) {
+        ctx.strokeStyle = '#B4BCC7';
+        ctx.lineWidth = 2;
+        for (let i = 8; i < sz; i += 10) {
           ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, sz); ctx.stroke();
         }
-      }, 128, 1, 1), roughness: 0.7 })
+      }, 128, 1, 1), roughness: 0.6, side: THREE.DoubleSide })
     );
     intake.rotation.x = Math.PI / 2;
-    intake.position.set(0, ceilY - 0.051, 0);
+    intake.position.set(0, underY, 0);
     scene.add(intake);
-    // One slot and louvre per side; each louvre hinges on its inner edge.
-    const slotMat = new THREE.MeshStandardMaterial({ color: 0x2A3442, roughness: 0.8, side: THREE.DoubleSide });
-    const louvreMat = new THREE.MeshStandardMaterial({ color: 0xD5DAE0, roughness: 0.5 });
+    // One fine slot and louvre per side; each louvre hinges on its inner edge.
+    const slotMat = new THREE.MeshStandardMaterial({ color: 0x3A4452, roughness: 0.8, side: THREE.DoubleSide });
+    const louvreMat = new THREE.MeshStandardMaterial({ color: 0xE6EAEF, roughness: 0.45 });
     const acLouvres = [0, Math.PI / 2, Math.PI, -Math.PI / 2].map((rot) => {
       const side = new THREE.Group();
       side.rotation.y = rot;
-      side.position.set(0, ceilY - 0.052, 0);
+      side.position.set(0, underY, 0);
       scene.add(side);
-      const slot = new THREE.Mesh(new THREE.PlaneGeometry(slotLen, 0.06), slotMat);
+      const slot = new THREE.Mesh(new THREE.PlaneGeometry(slotLen, 0.032), slotMat);
       slot.rotation.x = Math.PI / 2;
       slot.position.set(0, 0, slotOffset);
       side.add(slot);
-      const louvreGeo = new THREE.BoxGeometry(slotLen, 0.01, 0.07);
-      louvreGeo.translate(0, 0, 0.035);
+      const louvreGeo = new THREE.BoxGeometry(slotLen, 0.004, 0.036);
+      louvreGeo.translate(0, 0, 0.018);
       const louvre = new THREE.Mesh(louvreGeo, louvreMat);
-      louvre.position.set(0, -0.004, slotOffset - 0.035);
+      louvre.position.set(0, -0.002, slotOffset - 0.018);
       side.add(louvre);
       return louvre;
     });
     const acLed = new THREE.Mesh(
-      new THREE.CircleGeometry(0.02, 16),
+      new THREE.CircleGeometry(0.012, 16),
       new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0x00D4E8, emissiveIntensity: 1, side: THREE.DoubleSide })
     );
     acLed.rotation.x = Math.PI / 2;
-    acLed.position.set(0.29, ceilY - 0.052, 0.29);
+    acLed.position.set(0.25, underY - 0.001, 0.25);
     scene.add(acLed);
     const acLedGlow = new THREE.PointLight(0x00D4E8, 0.4, 2.2, 2);
-    acLedGlow.position.set(0, ceilY - 0.25, 0);
+    acLedGlow.position.set(0, ceilY - 0.2, 0);
     scene.add(acLedGlow);
 
     // Airflow ribbons: soft bands that leave each side of the cassette, run
